@@ -10,8 +10,7 @@
 // Date: 07.June.2023
 
 // dram model using dramsys library
-
-import "DPI-C" function int add_dram(input string resources_path, input string simulationJson_path);
+import "DPI-C" function int add_dram(input string resources_path, input string simulationJson_path, input longint dram_base_addr);
 import "DPI-C" function int dram_get_inflight_read(input int dram_id);
 import "DPI-C" function int dram_can_accept_req(input int dram_id);
 import "DPI-C" function int dram_has_write_rsp(input int dram_id);
@@ -100,7 +99,7 @@ initial begin
     if (resources_path.len() == 0 || simulationJson_path.len() == 0) begin
         $fatal(1,"no DRAMsys configuration found!");
     end
-    dram_id = add_dram(resources_path, simulationJson_path);
+    dram_id = add_dram(resources_path, simulationJson_path, BASE);
     void'($value$plusargs("ONE_DRAM_PRELOAD=%s", app_path));
     if (app_path.len() == 0) begin
         $warning("No app found to preload in DRAM !!");
@@ -118,7 +117,7 @@ initial begin
     end
 end
 
-//interface to manuly modify DRAM
+//interface to manualy modify DRAM
 task load_a_byte_to_dram(input longint dram_addr_ofst, input int data_byte );
     dram_preload_byte(dram_id, dram_addr_ofst, data_byte);
 endtask
@@ -130,7 +129,7 @@ task check_a_byte_in_dram(input longint dram_addr_ofst, output logic[7:0] data_b
     data_byte = byte_int;
 endtask
 
-//interface to manuly modify DRAM
+//interface to manualy modify DRAM
 task preload_elf_binary(input longint dram_addr_ofst, input string elf_binary );
     dram_load_elf(dram_id, dram_addr_ofst, elf_binary);
 endtask

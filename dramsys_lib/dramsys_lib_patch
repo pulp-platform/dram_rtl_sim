@@ -594,10 +594,10 @@ index 0000000..a9ab650
 +};
 diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..61fdda8
+index 0000000..b173386
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,259 @@
 +#include "Simulator.h"
 +
 +#include <DRAMSys/config/DRAMSysConfiguration.h>
@@ -608,12 +608,13 @@ index 0000000..61fdda8
 +
 +std::vector<uint64_t>                               list_of_DRAMburst;
 +std::vector<uint64_t>                               list_of_DRAMsize;
++std::vector<uint64_t>                               list_of_DRAMbase;
 +std::vector<DRAMSys::DRAMSys *>                     list_of_DRAMsys;
 +std::vector<dramsys_conv *>                         list_of_conv;
 +std::vector<uint8_t *>                              list_of_wbuffer;
 +std::vector<uint8_t *>                              list_of_wstrobe;
 +
-+extern "C" int add_dram(char * resources_path, char * simulationJson_path){
++extern "C" int add_dram(char * resources_path, char * simulationJson_path, uint64_t dram_base) {
 +
 +    static int id = 0;
 +
@@ -670,6 +671,7 @@ index 0000000..61fdda8
 +    list_of_DRAMsys.push_back(dramSys);
 +    list_of_conv.push_back(conv);
 +    list_of_DRAMsize.push_back(dramChannelSize);
++    list_of_DRAMbase.push_back(dram_base);
 +    list_of_DRAMburst.push_back(dramMaxBurstByte);
 +
 +    uint8_t* wbuffer_ptr = new uint8_t [2048];
@@ -790,16 +792,21 @@ index 0000000..61fdda8
 +    return list_of_DRAMsys[dram_id]->checkByte(dram_addr_ofst);
 +}
 +
-+extern "C" void dram_load_elf(int dram_id, uint64_t dram_base_addr, char * elf_path) {
++extern "C" void dram_load_elf(char * elf_path) {
 +    std::string app_binary;
 +    app_binary = elf_path;
 +    std::ifstream f(app_binary.c_str());
++    std::vector<unsigned char *> list_of_DRAMbuf_ptr;
++    for (int i = 0; i < list_of_DRAMsys.size(); i++)
++    {
++        list_of_DRAMbuf_ptr.push_back(list_of_DRAMsys[i]->getDramBasePointer());
++    }
 +    if (f.good())
 +    {
-+        elfloader_read_elf(app_binary.c_str(), list_of_DRAMsize[dram_id], dram_base_addr, list_of_DRAMsys[dram_id]->getDramBasePointer());
-+        std::cout << "Load elf file [" << app_binary << "] in DRAM id " << dram_id << std::endl;
++        elfloader_read_elf(app_binary.c_str(), list_of_DRAMsize, list_of_DRAMbase, list_of_DRAMbuf_ptr);
++        std::cout << "[DRAMSys] Load elf file [" << app_binary << "] in DRAM " << std::endl;
 +    } else {
-+        std::cout << "Can not Load elf file [" << app_binary << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
++        std::cout << "[DRAMSys] Can not Load elf file [" << app_binary << "] in DRAM : File not found"<< std::endl;
 +    }
 +
 +}
@@ -852,10 +859,10 @@ index 0000000..61fdda8
 +}
 diff --git a/src/simulator/simulator/elfloader.cpp b/src/simulator/simulator/elfloader.cpp
 new file mode 100644
-index 0000000..2cc3154
+index 0000000..cf2f511
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.cpp
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,137 @@
 +#include "elfloader.h"
 +
 +#define SHT_PROGBITS 0x1
@@ -868,11 +875,23 @@ index 0000000..2cc3154
 +reg_t entry;
 +int section_index = 0;
 +
-+void write (uint64_t address, uint64_t len, uint8_t* buf, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer) {
-+    std::cout << "[DRAMSys] elfloader section addr: 0x" << std::hex << address << " len: 0x" << len <<std::endl;
-+    for (int i = 0; i < len; i++) {
-+        assert( address - dest_base_addr + i < dest_size);
-+        dest_buffer[address - dest_base_addr + i] = buf[i];
++void write(uint64_t address,
++           uint64_t len,
++           uint8_t* buf,
++           std::vector<uint64_t>& dest_size,
++           std::vector<uint64_t>& dest_base,
++           std::vector<unsigned char*>& dest_buffer)
++{
++    for (int i = 0; i < dest_size.size(); i++)
++    {
++        if (address >= dest_base[i] && address < dest_base[i] + dest_size[i]) {
++            for (int j = 0; j < len; j++) {
++                assert( address - dest_base[i] + j < dest_size[i]);
++                dest_buffer[i][address - dest_base[i] + j] = buf[j];
++            }
++            std::cout << "[DRAMSys] elfloader section addr: 0x" << std::hex << address << " len: 0x" << len << " to channel " << i << std::endl;
++            return;
++        }
 +    }
 +}
 +
@@ -897,7 +916,10 @@ index 0000000..2cc3154
 +    return symbols[sym];
 +}
 +
-+void elfloader_read_elf(const char* filename, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer) {
++void elfloader_read_elf(const char* filename,
++                        std::vector<uint64_t>& dest_size,
++                        std::vector<uint64_t>& dest_base,
++                        std::vector<unsigned char *>& dest_buffer) {
 +  int fd = open(filename, O_RDONLY);
 +  struct stat s;
 +  assert(fd != -1);
@@ -929,10 +951,10 @@ index 0000000..2cc3154
 +      if(bswap(ph[i].p_type) == PT_LOAD && bswap(ph[i].p_memsz)) {	\
 +        if (bswap(ph[i].p_filesz)) {					\
 +          assert(size >= bswap(ph[i].p_offset) + bswap(ph[i].p_filesz)); \
-+          write(bswap(ph[i].p_paddr), bswap(ph[i].p_filesz), (uint8_t*)buf + bswap(ph[i].p_offset), dest_size, dest_base_addr, dest_buffer); \
++          write(bswap(ph[i].p_paddr), bswap(ph[i].p_filesz), (uint8_t*)buf + bswap(ph[i].p_offset), dest_size, dest_base, dest_buffer); \
 +        } \
 +        zeros.resize(bswap(ph[i].p_memsz) - bswap(ph[i].p_filesz)); \
-+        write(bswap(ph[i].p_paddr) + bswap(ph[i].p_filesz), bswap(ph[i].p_memsz) - bswap(ph[i].p_filesz), &zeros[0], dest_size, dest_base_addr, dest_buffer); \
++        write(bswap(ph[i].p_paddr) + bswap(ph[i].p_filesz), bswap(ph[i].p_memsz) - bswap(ph[i].p_filesz), &zeros[0], dest_size, dest_base, dest_buffer); \
 +      } \
 +    } \
 +    shdr_t* sh = (shdr_t*)(buf + bswap(eh->e_shoff)); \
@@ -980,10 +1002,10 @@ index 0000000..2cc3154
 +}
 diff --git a/src/simulator/simulator/elfloader.h b/src/simulator/simulator/elfloader.h
 new file mode 100644
-index 0000000..5e3f573
+index 0000000..50eb7e8
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.h
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,225 @@
 +#ifndef _ELFLOADER_H
 +#define _ELFLOADER_H
 +
@@ -1203,6 +1225,9 @@ index 0000000..5e3f573
 +uint64_t elf_get_symbol_addr(const char* sym);
 +char elfloader_get_section (long long* address, long long* len);
 +char elfloader_read_section (long long address, unsigned char * buf);
-+void elfloader_read_elf(const char* filename, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer);
++void elfloader_read_elf(const char* filename,
++                        std::vector<uint64_t>& dest_size,
++                        std::vector<uint64_t>& dest_base,
++                        std::vector<unsigned char*>& dest_buffer);
 +
 +#endif
