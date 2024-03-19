@@ -1,0 +1,16 @@
+**/logs/
+**/work
+**/build
+**/*.log
+**/modelsim.ini
+**/transcript
+vsim/compile.tcl
+vsim/result/*
+vsim/DRAMSys*
+dramsys_lib/DRAMSys
+**/*.wlf
+**/*.vstf
+vsim/.nfs*
+.bender
+log.txt
+Bender.lock
