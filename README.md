@@ -7,7 +7,7 @@ This tool aids in system-level hardware simulations, particularly for large chip
 ### 🔧 Prerequisites
 
 - This tool leverages [`bender`](https://github.com/pulp-platform/bender) for dependency management and automatic generation of compilation scripts.
-- Note: We currently do not offer an open-source simulation setup. Instead, we have utilized `Questasim` for simulating dynamic scratchpad memory.
+- Note: We currently do not offer an open-source simulation setup. Instead, we have utilized `Questasim` for simulation.
 - For building DRAMSys, cmake version >= 3.28.1 is required.
 
 ### 🔨 Build DRAMSys Dynamic Linkable Library
