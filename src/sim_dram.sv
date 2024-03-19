@@ -1,4 +1,4 @@
-// Copyright 2023 ETH Zurich and 
+// Copyright 2023 ETH Zurich and
 // University of Bologna
 
 // Solderpad Hardware License
@@ -26,7 +26,7 @@ import "DPI-C" function void dram_preload_byte(input int dram_id, input longint 
 import "DPI-C" function int dram_check_byte(input int dram_id, input longint dram_addr_ofst);
 import "DPI-C" function void dram_load_elf(input int dram_id, input longint dram_base_addr, input string app_path);
 import "DPI-C" function void dram_load_memfile(input int dram_id, input longint addr_ofst, input string mem_path);
-import "DPI-C" function void cloes_dram(input int dram_id);
+import "DPI-C" function void close_dram(input int dram_id);
 
 
 module sim_dram #(
@@ -43,7 +43,7 @@ module sim_dram #(
     input  logic                 clk_i,      // Clock
     input  logic                 rst_ni,     // Asynchronous reset active low
     // requests ports
-    input  logic                 req_valid_i,// request valid 
+    input  logic                 req_valid_i,// request valid
     output logic                 req_ready_o,// request ready
     input  logic                 we_i,       // write enable
     input  addr_t                addr_i,     // request address
@@ -94,7 +94,7 @@ initial begin
         simulationJson_path = {resources_path,"/",CustomerDRAM,".json"};
         $display("Use Customer DRAM configuration: %s\n",simulationJson_path);
     end
-    
+
     $display("resources_path= %s\n",resources_path);
     $display("simulationJson_path= %s\n",simulationJson_path);
     if (resources_path.len() == 0 || simulationJson_path.len() == 0) begin
@@ -184,7 +184,7 @@ always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
 
     end else begin//negedge clk
 
-        //rsponse 
+        //response
         if (~rsp_valid_o) begin
             if (dram_has_read_rsp(dram_id)) begin
                 int get_byte_int;
@@ -207,7 +207,7 @@ always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
                 b_valid_o <= 1;
             end
         end
-            
+
     end
 
 end
@@ -215,7 +215,7 @@ end
 
 
 final begin
-    cloes_dram(dram_id);
+    close_dram(dram_id);
 end
 
 endmodule : sim_dram

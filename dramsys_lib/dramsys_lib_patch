@@ -12,7 +12,7 @@ index 6b65d7d..f64c3c5 100644
          "WindowSize": 1000
      }
 diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
-index 2dbaacd..4671dec 100644
+index 2dbaacd..3fa7ab5 100644
 --- a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
 +++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
 @@ -126,6 +126,40 @@ const Configuration& DRAMSys::getConfig() const
@@ -27,13 +27,13 @@ index 2dbaacd..4671dec 100644
 +    return ptr;
 +}
 +
-+void DRAMSys::perloadByte(uint64_t addr, unsigned char data)
++void DRAMSys::preloadByte(uint64_t addr, unsigned char data)
 +{
 +    if (config.storeMode == Configuration::StoreMode::Store )
 +    {
 +        // uint64_t phy_addr = addressDecoder->decodeAddress(addr);
 +        for (auto& dram : drams)
-+            dram->perloadByteInDram(addr,data);
++            dram->preloadByteInDram(addr,data);
 +    }else{
 +        SC_REPORT_FATAL(this->name(), "Storage not configured!");
 +    }
@@ -57,7 +57,7 @@ index 2dbaacd..4671dec 100644
  {
      if (config.powerAnalysis)
 diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.h b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
-index 3202b88..4c19e5f 100644
+index 3202b88..15c4a59 100644
 --- a/src/libdramsys/DRAMSys/simulation/DRAMSys.h
 +++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
 @@ -71,6 +71,9 @@ public:
@@ -65,13 +65,13 @@ index 3202b88..4c19e5f 100644
      const Configuration& getConfig() const;
      const AddressDecoder& getAddressDecoder() const { return *addressDecoder; }
 +    unsigned char * getDramBasePointer();
-+    void perloadByte(uint64_t addr, unsigned char data);
++    void preloadByte(uint64_t addr, unsigned char data);
 +    unsigned char checkByte(uint64_t addr);
  
      /**
       * Returns true if all memory controllers are in idle state.
 diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
-index a2c21dc..e537d38 100644
+index a2c21dc..55769ed 100644
 --- a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
 +++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
 @@ -111,6 +111,24 @@ Dram::~Dram()
@@ -83,7 +83,7 @@ index a2c21dc..e537d38 100644
 +    return memory;
 +}
 +
-+void Dram::perloadByteInDram(uint64_t addr, unsigned char data)
++void Dram::preloadByteInDram(uint64_t addr, unsigned char data)
 +{
 +    unsigned char *phyAddr = memory + addr;
 +    *phyAddr = data;
@@ -100,7 +100,7 @@ index a2c21dc..e537d38 100644
  {
  #ifdef DRAMPOWER
 diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.h b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
-index d800406..2ee2bce 100644
+index d800406..716432f 100644
 --- a/src/libdramsys/DRAMSys/simulation/dram/Dram.h
 +++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
 @@ -88,6 +88,9 @@ public:
@@ -108,7 +108,7 @@ index d800406..2ee2bce 100644
      tlm_utils::simple_target_socket<Dram> tSocket;
  
 +    unsigned char * getDramBasePointer();
-+    void perloadByteInDram(uint64_t addr, unsigned char data);
++    void preloadByteInDram(uint64_t addr, unsigned char data);
 +    unsigned char checkByte(uint64_t addr);
      virtual void reportPower();
  
@@ -229,10 +229,10 @@ index 35f2ddf..3cff9dd 100644
  #include <DRAMSys/simulation/DRAMSysRecordable.h>
 diff --git a/src/simulator/simulator/dramsys_conv.h b/src/simulator/simulator/dramsys_conv.h
 new file mode 100644
-index 0000000..d9787f5
+index 0000000..a9ab650
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_conv.h
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,359 @@
 +#pragma once
 +
 +#include "simulator/MemoryManager.h"
@@ -592,16 +592,12 @@ index 0000000..d9787f5
 +    }
 +
 +};
-+
-+
-+
-+
 diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..fb90e9a
+index 0000000..61fdda8
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,252 @@
 +#include "Simulator.h"
 +
 +#include <DRAMSys/config/DRAMSysConfiguration.h>
@@ -777,7 +773,7 @@ index 0000000..fb90e9a
 +}
 +
 +
-+extern "C" void cloes_dram(int dram_id) {
++extern "C" void close_dram(int dram_id) {
 +    if(dram_id == 0) sc_stop();
 +    delete list_of_conv[dram_id];
 +    delete list_of_DRAMsys[dram_id];
@@ -786,7 +782,7 @@ index 0000000..fb90e9a
 +
 +extern "C" void dram_preload_byte(int dram_id, uint64_t dram_addr_ofst, int byte_int) {
 +    // std::cout << "Load byte " << byte_int << ", in addr "<<dram_addr_ofst <<", DRAM id " << dram_id << std::endl;
-+    list_of_DRAMsys[dram_id]->perloadByte(dram_addr_ofst,byte_int);
++    list_of_DRAMsys[dram_id]->preloadByte(dram_addr_ofst,byte_int);
 +}
 +
 +extern "C" int dram_check_byte(int dram_id, uint64_t dram_addr_ofst) {
@@ -841,7 +837,7 @@ index 0000000..fb90e9a
 +        std::stringstream ss;
 +        ss << std::hex << read_byte;
 +        ss >> data;
-+        list_of_DRAMsys[dram_id]->perloadByte(addr,data);
++        list_of_DRAMsys[dram_id]->preloadByte(addr,data);
 +        addr++;
 +    }
 +    MemFile.close();
@@ -854,10 +850,9 @@ index 0000000..fb90e9a
 +    list_of_conv[dram_id]->registerCBRespMeth(resp_meth);
 +    list_of_conv[dram_id]->registerCBUpdateReqMeth(req_meth);
 +}
-+
 diff --git a/src/simulator/simulator/elfloader.cpp b/src/simulator/simulator/elfloader.cpp
 new file mode 100644
-index 0000000..57d7b6d
+index 0000000..9e095a1
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.cpp
 @@ -0,0 +1,106 @@
@@ -967,10 +962,9 @@ index 0000000..57d7b6d
 +
 +  munmap(buf, size);
 +}
-\ No newline at end of file
 diff --git a/src/simulator/simulator/elfloader.h b/src/simulator/simulator/elfloader.h
 new file mode 100644
-index 0000000..52c37b0
+index 0000000..1901b09
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.h
 @@ -0,0 +1,200 @@
@@ -1174,4 +1168,3 @@ index 0000000..52c37b0
 +void elfloader_read_elf(const char* filename, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer);
 +
 +#endif
-\ No newline at end of file
