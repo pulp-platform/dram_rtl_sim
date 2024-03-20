@@ -101,18 +101,14 @@ initial begin
     end
     dram_id = add_dram(resources_path, simulationJson_path, BASE);
     void'($value$plusargs("ONE_DRAM_PRELOAD=%s", app_path));
-    if (app_path.len() == 0) begin
-        $warning("No app found to preload in DRAM !!");
-    end else begin
-        $display("loading app: %s\n",app_path);
+    if (app_path.len() != 0) begin
+        $display("[DRAMSys] Preloading elf: %s\n",app_path);
         dram_load_elf(app_path);
     end
 
     void'($value$plusargs("MEM=%s", mem_path));
-    if (mem_path.len() == 0) begin
-        $warning("No mem found to preload in DRAM !!");
-    end else begin
-        $display("loading mem: %s\n",mem_path);
+    if (mem_path.len() != 0) begin
+        $display("[DRAMSys] Preloading mem: %s\n",mem_path);
         dram_load_memfile(dram_id, 0, mem_path);
     end
 end
