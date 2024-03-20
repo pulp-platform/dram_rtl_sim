@@ -594,10 +594,10 @@ index 0000000..a9ab650
 +};
 diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..b173386
+index 0000000..17940ba
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,294 @@
 +#include "Simulator.h"
 +
 +#include <DRAMSys/config/DRAMSysConfiguration.h>
@@ -783,13 +783,49 @@ index 0000000..b173386
 +
 +
 +extern "C" void dram_preload_byte(int dram_id, uint64_t dram_addr_ofst, int byte_int) {
-+    // std::cout << "Load byte " << byte_int << ", in addr "<<dram_addr_ofst <<", DRAM id " << dram_id << std::endl;
 +    list_of_DRAMsys[dram_id]->preloadByte(dram_addr_ofst,byte_int);
 +}
 +
 +extern "C" int dram_check_byte(int dram_id, uint64_t dram_addr_ofst) {
-+    // std::cout << "Load byte " << byte_int << ", in addr "<<dram_addr_ofst <<", DRAM id " << dram_id << std::endl;
 +    return list_of_DRAMsys[dram_id]->checkByte(dram_addr_ofst);
++}
++
++int get_dram_id(uint64_t addr) {
++    int dram_id = -1;
++    for (int i = 0; i < list_of_DRAMsys.size(); i++) {
++        if (addr >= list_of_DRAMbase[i] && addr < list_of_DRAMbase[i] + list_of_DRAMsize[i]) {
++            dram_id = i;
++            break;
++        }
++    }
++    if (dram_id == -1) {
++        std::cout << "[DRAMSYS] Address " << addr << " is out of range of all DRAMs" << std::endl;
++    }
++    return dram_id;
++}
++
++extern "C" int dram_check_elf_symbol(const char* sym) {
++    // Get the address of the symbol in the ELF file
++    uint64_t symbol_ptr = elf_get_symbol_addr(sym);
++    // Get the DRAM id of the symbol
++    int dram_id = get_dram_id(symbol_ptr);
++    // Get the value of the symbol in the DRAM
++    int value = 0;
++    for (int i = 0; i < 4; i++) {
++        value |= list_of_DRAMsys[dram_id]->checkByte(symbol_ptr + i - list_of_DRAMbase[dram_id]) << (i*8);
++    }
++    return value;
++}
++
++extern "C" void dram_write_elf_symbol(const char* sym, int value) {
++    // Get the address of the symbol in the ELF file
++    uint64_t symbol_ptr = elf_get_symbol_addr(sym);
++    // Get the DRAM id of the symbol
++    int dram_id = get_dram_id(symbol_ptr);
++    // Write the value of the symbol in the DRAM
++    for (int i = 0; i < 4; i++) {
++        list_of_DRAMsys[dram_id]->preloadByte(symbol_ptr + i - list_of_DRAMbase[dram_id], (value >> (i*8)) & 0xFF);
++    }
 +}
 +
 +extern "C" void dram_load_elf(char * elf_path) {
@@ -808,7 +844,6 @@ index 0000000..b173386
 +    } else {
 +        std::cout << "[DRAMSys] Can not Load elf file [" << app_binary << "] in DRAM : File not found"<< std::endl;
 +    }
-+
 +}
 +
 +extern "C" void dram_load_memfile(int dram_id, uint64_t addr_ofst, char * mem_path){

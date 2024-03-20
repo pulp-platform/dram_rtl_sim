@@ -23,7 +23,7 @@ import "DPI-C" function void dram_get_read_rsp(input int dram_id, input longint 
 import "DPI-C" function int dram_get_read_rsp_byte(input int dram_id);
 import "DPI-C" function void dram_preload_byte(input int dram_id, input longint dram_addr_ofst, input int byte_int);
 import "DPI-C" function int dram_check_byte(input int dram_id, input longint dram_addr_ofst);
-import "DPI-C" function void dram_load_elf(input int dram_id, input longint dram_base_addr, input string app_path);
+import "DPI-C" function void dram_load_elf(input string app_path);
 import "DPI-C" function void dram_load_memfile(input int dram_id, input longint addr_ofst, input string mem_path);
 import "DPI-C" function void close_dram(input int dram_id);
 
@@ -105,7 +105,7 @@ initial begin
         $warning("No app found to preload in DRAM !!");
     end else begin
         $display("loading app: %s\n",app_path);
-        dram_load_elf(dram_id, BASE, app_path);
+        dram_load_elf(app_path);
     end
 
     void'($value$plusargs("MEM=%s", mem_path));
@@ -130,8 +130,8 @@ task check_a_byte_in_dram(input longint dram_addr_ofst, output logic[7:0] data_b
 endtask
 
 //interface to manualy modify DRAM
-task preload_elf_binary(input longint dram_addr_ofst, input string elf_binary );
-    dram_load_elf(dram_id, dram_addr_ofst, elf_binary);
+task preload_elf_binary(input string elf_binary );
+    dram_load_elf(elf_binary);
 endtask
 
 always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
