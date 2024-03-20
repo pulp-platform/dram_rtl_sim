@@ -1,0 +1,26 @@
+# Copyright 2024 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+
+name: dramsys_lib
+
+on: [push, pull_request]
+
+jobs:
+  build-dramsys-lib:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Fetch and patch DRAMSys
+      run: |
+        cd dramsys_lib
+        git clone https://github.com/tukl-msd/DRAMSys.git
+        cd DRAMSys
+        git reset --hard 8e021ea
+        git apply ../dramsys_lib_patch
+    - name: Build DRAMSys
+      run: |
+        mkdir -p dramsys_lib/DRAMSys/build
+        cd dramsys_lib/DRAMSys/build
+        cmake -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON ..
+        make -j

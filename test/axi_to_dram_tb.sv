@@ -1,4 +1,4 @@
-// Copyright 2023 ETH Zurich and 
+// Copyright 2023 ETH Zurich and
 // University of Bologna
 
 // Solderpad Hardware License
@@ -12,7 +12,7 @@
 // Testbench for dram rtl simulator
 `timescale 1ns/1ps
 
-module axi_to_dram_tb; 
+module axi_to_dram_tb;
 
     `include "axi/assign.svh"
     `include "axi/typedef.svh"
@@ -84,7 +84,7 @@ module axi_to_dram_tb;
     //        DUT       //
     //////////////////////
 
-    dram_sim_engine #(.ClkPeriodNs(4)) i_dram_sim_engine (.clk_i(clk), .rst_ni(rst_n));
+    dram_sim_engine #(.ClkPeriod(ClkPeriod)) i_dram_sim_engine (.clk_i(clk), .rst_ni(rst_n));
 
     axi_dram_sim #(
         .AxiAddrWidth(AXI_ADDR_WIDTH),
