@@ -1,4 +1,4 @@
-// Copyright 2023 ETH Zurich and 
+// Copyright 2023 ETH Zurich and
 // University of Bologna
 
 // Solderpad Hardware License
@@ -10,8 +10,7 @@
 // Date: 07.June.2023
 
 // dram model using dramsys library
-
-import "DPI-C" function int add_dram(input string resources_path, input string simulationJson_path);
+import "DPI-C" function int add_dram(input string resources_path, input string simulationJson_path, input longint dram_base_addr);
 import "DPI-C" function int dram_get_inflight_read(input int dram_id);
 import "DPI-C" function int dram_can_accept_req(input int dram_id);
 import "DPI-C" function int dram_has_write_rsp(input int dram_id);
@@ -24,9 +23,9 @@ import "DPI-C" function void dram_get_read_rsp(input int dram_id, input longint 
 import "DPI-C" function int dram_get_read_rsp_byte(input int dram_id);
 import "DPI-C" function void dram_preload_byte(input int dram_id, input longint dram_addr_ofst, input int byte_int);
 import "DPI-C" function int dram_check_byte(input int dram_id, input longint dram_addr_ofst);
-import "DPI-C" function void dram_load_elf(input int dram_id, input longint dram_base_addr, input string app_path);
+import "DPI-C" function void dram_load_elf(input string app_path);
 import "DPI-C" function void dram_load_memfile(input int dram_id, input longint addr_ofst, input string mem_path);
-import "DPI-C" function void cloes_dram(input int dram_id);
+import "DPI-C" function void close_dram(input int dram_id);
 
 
 module sim_dram #(
@@ -43,7 +42,7 @@ module sim_dram #(
     input  logic                 clk_i,      // Clock
     input  logic                 rst_ni,     // Asynchronous reset active low
     // requests ports
-    input  logic                 req_valid_i,// request valid 
+    input  logic                 req_valid_i,// request valid
     output logic                 req_ready_o,// request ready
     input  logic                 we_i,       // write enable
     input  addr_t                addr_i,     // request address
@@ -91,34 +90,30 @@ initial begin
     endcase
 
     if (CustomerDRAM != "none") begin
-        simulationJson_path = {resources_path,"/",CustomerDRAM,".json"};
-        $display("Use Customer DRAM configuration: %s\n",simulationJson_path);
+        simulationJson_path = {resources_path, "/", CustomerDRAM, ".json"};
+        $display("[DRAMSys] Use Customer DRAM configuration: %s",simulationJson_path);
     end
-    
-    $display("resources_path= %s\n",resources_path);
-    $display("simulationJson_path= %s\n",simulationJson_path);
+
+    $display("[DRAMSys] resources_path=%s", resources_path);
+    $display("[DRAMSys] simulationJson_path=%s", simulationJson_path);
     if (resources_path.len() == 0 || simulationJson_path.len() == 0) begin
-        $fatal(1,"no DRAMsys configuration found!");
+        $fatal(1,"[DRAMSys] no DRAMsys configuration found!");
     end
-    dram_id = add_dram(resources_path, simulationJson_path);
+    dram_id = add_dram(resources_path, simulationJson_path, BASE);
     void'($value$plusargs("ONE_DRAM_PRELOAD=%s", app_path));
-    if (app_path.len() == 0) begin
-        $warning("No app found to preload in DRAM !!");
-    end else begin
-        $display("loading app: %s\n",app_path);
-        dram_load_elf(dram_id, BASE, app_path);
+    if (app_path.len() != 0) begin
+        $display("[DRAMSys] Preloading elf: %s\n", app_path);
+        dram_load_elf(app_path);
     end
 
     void'($value$plusargs("MEM=%s", mem_path));
-    if (mem_path.len() == 0) begin
-        $warning("No mem found to preload in DRAM !!");
-    end else begin
-        $display("loading mem: %s\n",mem_path);
+    if (mem_path.len() != 0) begin
+        $display("[DRAMSys] Preloading mem: %s\n", mem_path);
         dram_load_memfile(dram_id, 0, mem_path);
     end
 end
 
-//interface to manuly modify DRAM
+//interface to manualy modify DRAM
 task load_a_byte_to_dram(input longint dram_addr_ofst, input int data_byte );
     dram_preload_byte(dram_id, dram_addr_ofst, data_byte);
 endtask
@@ -130,9 +125,9 @@ task check_a_byte_in_dram(input longint dram_addr_ofst, output logic[7:0] data_b
     data_byte = byte_int;
 endtask
 
-//interface to manuly modify DRAM
-task preload_elf_binary(input longint dram_addr_ofst, input string elf_binary );
-    dram_load_elf(dram_id, dram_addr_ofst, elf_binary);
+//interface to manualy modify DRAM
+task preload_elf_binary(input string elf_binary );
+    dram_load_elf(elf_binary);
 endtask
 
 always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
@@ -184,7 +179,7 @@ always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
 
     end else begin//negedge clk
 
-        //rsponse 
+        //response
         if (~rsp_valid_o) begin
             if (dram_has_read_rsp(dram_id)) begin
                 int get_byte_int;
@@ -207,7 +202,7 @@ always_ff @(negedge clk_i or posedge clk_i or negedge rst_ni) begin : proc_dram
                 b_valid_o <= 1;
             end
         end
-            
+
     end
 
 end
@@ -215,7 +210,7 @@ end
 
 
 final begin
-    cloes_dram(dram_id);
+    close_dram(dram_id);
 end
 
 endmodule : sim_dram

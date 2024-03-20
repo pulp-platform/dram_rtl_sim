@@ -12,7 +12,7 @@ index 6b65d7d..f64c3c5 100644
          "WindowSize": 1000
      }
 diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
-index 2dbaacd..4671dec 100644
+index 2dbaacd..3fa7ab5 100644
 --- a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
 +++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
 @@ -126,6 +126,40 @@ const Configuration& DRAMSys::getConfig() const
@@ -27,13 +27,13 @@ index 2dbaacd..4671dec 100644
 +    return ptr;
 +}
 +
-+void DRAMSys::perloadByte(uint64_t addr, unsigned char data)
++void DRAMSys::preloadByte(uint64_t addr, unsigned char data)
 +{
 +    if (config.storeMode == Configuration::StoreMode::Store )
 +    {
 +        // uint64_t phy_addr = addressDecoder->decodeAddress(addr);
 +        for (auto& dram : drams)
-+            dram->perloadByteInDram(addr,data);
++            dram->preloadByteInDram(addr,data);
 +    }else{
 +        SC_REPORT_FATAL(this->name(), "Storage not configured!");
 +    }
@@ -57,7 +57,7 @@ index 2dbaacd..4671dec 100644
  {
      if (config.powerAnalysis)
 diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.h b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
-index 3202b88..4c19e5f 100644
+index 3202b88..15c4a59 100644
 --- a/src/libdramsys/DRAMSys/simulation/DRAMSys.h
 +++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
 @@ -71,6 +71,9 @@ public:
@@ -65,13 +65,13 @@ index 3202b88..4c19e5f 100644
      const Configuration& getConfig() const;
      const AddressDecoder& getAddressDecoder() const { return *addressDecoder; }
 +    unsigned char * getDramBasePointer();
-+    void perloadByte(uint64_t addr, unsigned char data);
++    void preloadByte(uint64_t addr, unsigned char data);
 +    unsigned char checkByte(uint64_t addr);
  
      /**
       * Returns true if all memory controllers are in idle state.
 diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
-index a2c21dc..e537d38 100644
+index a2c21dc..55769ed 100644
 --- a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
 +++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
 @@ -111,6 +111,24 @@ Dram::~Dram()
@@ -83,7 +83,7 @@ index a2c21dc..e537d38 100644
 +    return memory;
 +}
 +
-+void Dram::perloadByteInDram(uint64_t addr, unsigned char data)
++void Dram::preloadByteInDram(uint64_t addr, unsigned char data)
 +{
 +    unsigned char *phyAddr = memory + addr;
 +    *phyAddr = data;
@@ -100,7 +100,7 @@ index a2c21dc..e537d38 100644
  {
  #ifdef DRAMPOWER
 diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.h b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
-index d800406..2ee2bce 100644
+index d800406..716432f 100644
 --- a/src/libdramsys/DRAMSys/simulation/dram/Dram.h
 +++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
 @@ -88,6 +88,9 @@ public:
@@ -108,7 +108,7 @@ index d800406..2ee2bce 100644
      tlm_utils::simple_target_socket<Dram> tSocket;
  
 +    unsigned char * getDramBasePointer();
-+    void perloadByteInDram(uint64_t addr, unsigned char data);
++    void preloadByteInDram(uint64_t addr, unsigned char data);
 +    unsigned char checkByte(uint64_t addr);
      virtual void reportPower();
  
@@ -229,10 +229,10 @@ index 35f2ddf..3cff9dd 100644
  #include <DRAMSys/simulation/DRAMSysRecordable.h>
 diff --git a/src/simulator/simulator/dramsys_conv.h b/src/simulator/simulator/dramsys_conv.h
 new file mode 100644
-index 0000000..d9787f5
+index 0000000..a9ab650
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_conv.h
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,359 @@
 +#pragma once
 +
 +#include "simulator/MemoryManager.h"
@@ -592,16 +592,12 @@ index 0000000..d9787f5
 +    }
 +
 +};
-+
-+
-+
-+
 diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..fb90e9a
+index 0000000..e23fca7
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,294 @@
 +#include "Simulator.h"
 +
 +#include <DRAMSys/config/DRAMSysConfiguration.h>
@@ -612,12 +608,13 @@ index 0000000..fb90e9a
 +
 +std::vector<uint64_t>                               list_of_DRAMburst;
 +std::vector<uint64_t>                               list_of_DRAMsize;
++std::vector<uint64_t>                               list_of_DRAMbase;
 +std::vector<DRAMSys::DRAMSys *>                     list_of_DRAMsys;
 +std::vector<dramsys_conv *>                         list_of_conv;
 +std::vector<uint8_t *>                              list_of_wbuffer;
 +std::vector<uint8_t *>                              list_of_wstrobe;
 +
-+extern "C" int add_dram(char * resources_path, char * simulationJson_path){
++extern "C" int add_dram(char * resources_path, char * simulationJson_path, uint64_t dram_base) {
 +
 +    static int id = 0;
 +
@@ -674,6 +671,7 @@ index 0000000..fb90e9a
 +    list_of_DRAMsys.push_back(dramSys);
 +    list_of_conv.push_back(conv);
 +    list_of_DRAMsize.push_back(dramChannelSize);
++    list_of_DRAMbase.push_back(dram_base);
 +    list_of_DRAMburst.push_back(dramMaxBurstByte);
 +
 +    uint8_t* wbuffer_ptr = new uint8_t [2048];
@@ -683,7 +681,7 @@ index 0000000..fb90e9a
 +    list_of_wstrobe.push_back(wstrobe_ptr);
 +
 +
-+    std::cout << "the instantiated DRAM id is: " << id << std::endl;
++    std::cout << "[DRAMSys] DRAM " << id << " is added with base address 0x" << std::hex << dram_base << std::endl;
 +
 +    int res = id;
 +    id += 1;
@@ -777,7 +775,7 @@ index 0000000..fb90e9a
 +}
 +
 +
-+extern "C" void cloes_dram(int dram_id) {
++extern "C" void close_dram(int dram_id) {
 +    if(dram_id == 0) sc_stop();
 +    delete list_of_conv[dram_id];
 +    delete list_of_DRAMsys[dram_id];
@@ -785,27 +783,67 @@ index 0000000..fb90e9a
 +
 +
 +extern "C" void dram_preload_byte(int dram_id, uint64_t dram_addr_ofst, int byte_int) {
-+    // std::cout << "Load byte " << byte_int << ", in addr "<<dram_addr_ofst <<", DRAM id " << dram_id << std::endl;
-+    list_of_DRAMsys[dram_id]->perloadByte(dram_addr_ofst,byte_int);
++    list_of_DRAMsys[dram_id]->preloadByte(dram_addr_ofst,byte_int);
 +}
 +
 +extern "C" int dram_check_byte(int dram_id, uint64_t dram_addr_ofst) {
-+    // std::cout << "Load byte " << byte_int << ", in addr "<<dram_addr_ofst <<", DRAM id " << dram_id << std::endl;
 +    return list_of_DRAMsys[dram_id]->checkByte(dram_addr_ofst);
 +}
 +
-+extern "C" void dram_load_elf(int dram_id, uint64_t dram_base_addr, char * elf_path) {
++int get_dram_id(uint64_t addr) {
++    int dram_id = -1;
++    for (int i = 0; i < list_of_DRAMsys.size(); i++) {
++        if (addr >= list_of_DRAMbase[i] && addr < list_of_DRAMbase[i] + list_of_DRAMsize[i]) {
++            dram_id = i;
++            break;
++        }
++    }
++    if (dram_id == -1) {
++        std::cout << "[DRAMSYS] Address " << addr << " is out of range of all DRAMs" << std::endl;
++    }
++    return dram_id;
++}
++
++extern "C" int dram_check_elf_symbol(const char* sym) {
++    // Get the address of the symbol in the ELF file
++    uint64_t symbol_ptr = elf_get_symbol_addr(sym);
++    // Get the DRAM id of the symbol
++    int dram_id = get_dram_id(symbol_ptr);
++    // Get the value of the symbol in the DRAM
++    int value = 0;
++    for (int i = 0; i < 4; i++) {
++        value |= list_of_DRAMsys[dram_id]->checkByte(symbol_ptr + i - list_of_DRAMbase[dram_id]) << (i*8);
++    }
++    return value;
++}
++
++extern "C" void dram_write_elf_symbol(const char* sym, int value) {
++    // Get the address of the symbol in the ELF file
++    uint64_t symbol_ptr = elf_get_symbol_addr(sym);
++    // Get the DRAM id of the symbol
++    int dram_id = get_dram_id(symbol_ptr);
++    // Write the value of the symbol in the DRAM
++    for (int i = 0; i < 4; i++) {
++        list_of_DRAMsys[dram_id]->preloadByte(symbol_ptr + i - list_of_DRAMbase[dram_id], (value >> (i*8)) & 0xFF);
++    }
++}
++
++extern "C" void dram_load_elf(char * elf_path) {
 +    std::string app_binary;
 +    app_binary = elf_path;
 +    std::ifstream f(app_binary.c_str());
++    std::vector<unsigned char *> list_of_DRAMbuf_ptr;
++    for (int i = 0; i < list_of_DRAMsys.size(); i++)
++    {
++        list_of_DRAMbuf_ptr.push_back(list_of_DRAMsys[i]->getDramBasePointer());
++    }
 +    if (f.good())
 +    {
-+        elfloader_read_elf(app_binary.c_str(), list_of_DRAMsize[dram_id], dram_base_addr, list_of_DRAMsys[dram_id]->getDramBasePointer());
-+        std::cout << "Load elf file [" << app_binary << "] in DRAM id " << dram_id << std::endl;
++        elfloader_read_elf(app_binary.c_str(), list_of_DRAMsize, list_of_DRAMbase, list_of_DRAMbuf_ptr);
++        std::cout << "[DRAMSys] Load elf file" << app_binary << " to DRAM " << std::endl;
 +    } else {
-+        std::cout << "Can not Load elf file [" << app_binary << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
++        std::cout << "[DRAMSys] Can not Load elf file" << app_binary << " : File not found"<< std::endl;
 +    }
-+
 +}
 +
 +extern "C" void dram_load_memfile(int dram_id, uint64_t addr_ofst, char * mem_path){
@@ -813,12 +851,12 @@ index 0000000..fb90e9a
 +    //Memory pre-loading
 +    std::string read_byte;
 +    uint64_t addr = addr_ofst;
-+    std::cout << "Load mem file [" << mem_path << "] in DRAM id " << dram_id << " from addr " << addr_ofst << std::endl;
++    std::cout << "[DRAMSys] Load mem file [" << mem_path << "] in DRAM id " << dram_id << " from addr " << addr_ofst << std::endl;
 +    std::ifstream MemFile(mem_path);
 +    //sanity check
 +    if (!MemFile.good())
 +    {
-+        std::cout << "Can not Load Mem file [" << mem_path << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
++        std::cout << "[DRAMSys] Can not Load Mem file [" << mem_path << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
 +        return;
 +    }
 +
@@ -841,7 +879,7 @@ index 0000000..fb90e9a
 +        std::stringstream ss;
 +        ss << std::hex << read_byte;
 +        ss >> data;
-+        list_of_DRAMsys[dram_id]->perloadByte(addr,data);
++        list_of_DRAMsys[dram_id]->preloadByte(addr,data);
 +        addr++;
 +    }
 +    MemFile.close();
@@ -854,13 +892,12 @@ index 0000000..fb90e9a
 +    list_of_conv[dram_id]->registerCBRespMeth(resp_meth);
 +    list_of_conv[dram_id]->registerCBUpdateReqMeth(req_meth);
 +}
-+
 diff --git a/src/simulator/simulator/elfloader.cpp b/src/simulator/simulator/elfloader.cpp
 new file mode 100644
-index 0000000..57d7b6d
+index 0000000..e95266c
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.cpp
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,137 @@
 +#include "elfloader.h"
 +
 +#define SHT_PROGBITS 0x1
@@ -873,12 +910,23 @@ index 0000000..57d7b6d
 +reg_t entry;
 +int section_index = 0;
 +
-+void write (uint64_t address, uint64_t len, uint8_t* buf, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer) {
-+    std::cout << "elfloader section addr: 0x" << std::hex << address << " len: 0x" << len <<std::endl;
-+    for (int i = 0; i < len; i++) {
-+        assert( address - dest_base_addr + i < dest_size);
-+        dest_buffer[address - dest_base_addr + i] = buf[i];
-+        // std::cout << "offset 0x" << address - dest_base_addr + i << "= 0x" << std::hex <<(unsigned int)buf[i] <<std::endl;
++void write(uint64_t address,
++           uint64_t len,
++           uint8_t* buf,
++           std::vector<uint64_t>& dest_size,
++           std::vector<uint64_t>& dest_base,
++           std::vector<unsigned char*>& dest_buffer)
++{
++    for (int i = 0; i < dest_size.size(); i++)
++    {
++        if (address >= dest_base[i] && address < dest_base[i] + dest_size[i]) {
++            for (int j = 0; j < len; j++) {
++                assert( address - dest_base[i] + j < dest_size[i]);
++                dest_buffer[i][address - dest_base[i] + j] = buf[j];
++            }
++            std::cout << "[DRAMSys] elfloader section addr: 0x" << std::hex << address << " len: 0x" << len << " to DRAM " << i << std::endl;
++            return;
++        }
 +    }
 +}
 +
@@ -895,85 +943,104 @@ index 0000000..57d7b6d
 +    } else return 0;
 +}
 +
++// Get the address of a symbol defined in the elf file
++uint64_t elf_get_symbol_addr(const char* sym) {
++    if (symbols.count(sym) == 0) {
++      std::cout << "[DRAMSys] Symbol " << sym << " not found" << std::endl;
++    }
++    return symbols[sym];
++}
 +
-+void elfloader_read_elf(const char* filename, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer) {
-+    int fd = open(filename, O_RDONLY);
-+    struct stat s;
-+    assert(fd != -1);
-+    if (fstat(fd, &s) < 0)
++void elfloader_read_elf(const char* filename,
++                        std::vector<uint64_t>& dest_size,
++                        std::vector<uint64_t>& dest_base,
++                        std::vector<unsigned char *>& dest_buffer) {
++  int fd = open(filename, O_RDONLY);
++  struct stat s;
++  assert(fd != -1);
++  if (fstat(fd, &s) < 0)
 +    abort();
-+    size_t size = s.st_size;
++  size_t size = s.st_size;
 +
-+    char* buf = (char*)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
-+    assert(buf != MAP_FAILED);
-+    close(fd);
++  char* buf = (char*)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
++  assert(buf != MAP_FAILED);
++  close(fd);
 +
-+    assert(size >= sizeof(Elf64_Ehdr));
-+    const Elf64_Ehdr* eh64 = (const Elf64_Ehdr*)buf;
-+    assert(IS_ELF32(*eh64) || IS_ELF64(*eh64));
++  assert(size >= sizeof(Elf64_Ehdr));
++  const Elf64_Ehdr* eh64 = (const Elf64_Ehdr*)buf;
++  assert(IS_ELF32(*eh64) || IS_ELF64(*eh64));
++  assert(IS_ELFLE(*eh64) || IS_ELFBE(*eh64));
++  assert(IS_ELF_EXEC(*eh64));
++  assert(IS_ELF_RISCV(*eh64) || IS_ELF_EM_NONE(*eh64));
++  assert(IS_ELF_VCURRENT(*eh64));
 +
++  std::vector<uint8_t> zeros;
++  // std::map<std::string, uint64_t> symbols;
 +
-+
-+    std::vector<uint8_t> zeros;
-+    std::map<std::string, uint64_t> symbols;
-+
-+    #define LOAD_ELF(ehdr_t, phdr_t, shdr_t, sym_t) do { \
++  #define LOAD_ELF(ehdr_t, phdr_t, shdr_t, sym_t, bswap) do { \
 +    ehdr_t* eh = (ehdr_t*)buf; \
-+    phdr_t* ph = (phdr_t*)(buf + eh->e_phoff); \
-+    entry = eh->e_entry; \
-+    assert(size >= eh->e_phoff + eh->e_phnum*sizeof(*ph)); \
-+    for (unsigned i = 0; i < eh->e_phnum; i++) { \
-+      if(ph[i].p_type == PT_LOAD && ph[i].p_memsz) { \
-+        if (ph[i].p_filesz) { \
-+          assert(size >= ph[i].p_offset + ph[i].p_filesz); \
-+          sections.push_back(std::make_pair(ph[i].p_paddr, ph[i].p_memsz)); \
-+          write(ph[i].p_paddr, ph[i].p_filesz, (uint8_t*)buf + ph[i].p_offset, dest_size, dest_base_addr, dest_buffer); \
++    phdr_t* ph = (phdr_t*)(buf + bswap(eh->e_phoff)); \
++    entry = bswap(eh->e_entry); \
++    assert(size >= bswap(eh->e_phoff) + bswap(eh->e_phnum)*sizeof(*ph)); \
++    for (unsigned i = 0; i < bswap(eh->e_phnum); i++) {			\
++      if(bswap(ph[i].p_type) == PT_LOAD && bswap(ph[i].p_memsz)) {	\
++        if (bswap(ph[i].p_filesz)) {					\
++          assert(size >= bswap(ph[i].p_offset) + bswap(ph[i].p_filesz)); \
++          write(bswap(ph[i].p_paddr), bswap(ph[i].p_filesz), (uint8_t*)buf + bswap(ph[i].p_offset), dest_size, dest_base, dest_buffer); \
 +        } \
-+        zeros.resize(ph[i].p_memsz - ph[i].p_filesz); \
++        zeros.resize(bswap(ph[i].p_memsz) - bswap(ph[i].p_filesz)); \
++        write(bswap(ph[i].p_paddr) + bswap(ph[i].p_filesz), bswap(ph[i].p_memsz) - bswap(ph[i].p_filesz), &zeros[0], dest_size, dest_base, dest_buffer); \
 +      } \
 +    } \
-+    shdr_t* sh = (shdr_t*)(buf + eh->e_shoff); \
-+    assert(size >= eh->e_shoff + eh->e_shnum*sizeof(*sh)); \
-+    assert(eh->e_shstrndx < eh->e_shnum); \
-+    assert(size >= sh[eh->e_shstrndx].sh_offset + sh[eh->e_shstrndx].sh_size); \
-+    char *shstrtab = buf + sh[eh->e_shstrndx].sh_offset; \
++    shdr_t* sh = (shdr_t*)(buf + bswap(eh->e_shoff)); \
++    assert(size >= bswap(eh->e_shoff) + bswap(eh->e_shnum)*sizeof(*sh)); \
++    assert(bswap(eh->e_shstrndx) < bswap(eh->e_shnum)); \
++    assert(size >= bswap(sh[bswap(eh->e_shstrndx)].sh_offset) + bswap(sh[bswap(eh->e_shstrndx)].sh_size)); \
++    char *shstrtab = buf + bswap(sh[bswap(eh->e_shstrndx)].sh_offset);	\
 +    unsigned strtabidx = 0, symtabidx = 0; \
-+    for (unsigned i = 0; i < eh->e_shnum; i++) { \
-+      unsigned max_len = sh[eh->e_shstrndx].sh_size - sh[i].sh_name; \
-+      if ((sh[i].sh_type & SHT_GROUP) && strcmp(shstrtab + sh[i].sh_name, ".strtab") != 0 && strcmp(shstrtab + sh[i].sh_name, ".shstrtab") != 0) \
-+      assert(strnlen(shstrtab + sh[i].sh_name, max_len) < max_len); \
-+      if (sh[i].sh_type & SHT_PROGBITS) continue; \
-+      if (strcmp(shstrtab + sh[i].sh_name, ".strtab") == 0) \
++    for (unsigned i = 0; i < bswap(eh->e_shnum); i++) {		     \
++      unsigned max_len = bswap(sh[bswap(eh->e_shstrndx)].sh_size) - bswap(sh[i].sh_name); \
++      assert(bswap(sh[i].sh_name) < bswap(sh[bswap(eh->e_shstrndx)].sh_size));	\
++      assert(strnlen(shstrtab + bswap(sh[i].sh_name), max_len) < max_len); \
++      if (bswap(sh[i].sh_type) & SHT_NOBITS) continue; \
++      assert(size >= bswap(sh[i].sh_offset) + bswap(sh[i].sh_size)); \
++      if (strcmp(shstrtab + bswap(sh[i].sh_name), ".strtab") == 0) \
 +        strtabidx = i; \
-+      if (strcmp(shstrtab + sh[i].sh_name, ".symtab") == 0) \
++      if (strcmp(shstrtab + bswap(sh[i].sh_name), ".symtab") == 0) \
 +        symtabidx = i; \
 +    } \
 +    if (strtabidx && symtabidx) { \
-+      char* strtab = buf + sh[strtabidx].sh_offset; \
-+      sym_t* sym = (sym_t*)(buf + sh[symtabidx].sh_offset); \
-+      for (unsigned i = 0; i < sh[symtabidx].sh_size/sizeof(sym_t); i++) { \
-+        unsigned max_len = sh[strtabidx].sh_size - sym[i].st_name; \
-+        assert(sym[i].st_name < sh[strtabidx].  sh_size); \
-+        assert(strnlen(strtab + sym[i].st_name, max_len) < max_len); \
-+        symbols[strtab + sym[i].st_name] = sym[i].st_value; \
++      char* strtab = buf + bswap(sh[strtabidx].sh_offset); \
++      sym_t* sym = (sym_t*)(buf + bswap(sh[symtabidx].sh_offset)); \
++      for (unsigned i = 0; i < bswap(sh[symtabidx].sh_size)/sizeof(sym_t); i++) { \
++        unsigned max_len = bswap(sh[strtabidx].sh_size) - bswap(sym[i].st_name); \
++        assert(bswap(sym[i].st_name) < bswap(sh[strtabidx].sh_size));	\
++        assert(strnlen(strtab + bswap(sym[i].st_name), max_len) < max_len); \
++        symbols[strtab + bswap(sym[i].st_name)] = bswap(sym[i].st_value); \
 +      } \
 +    } \
-+    } while(0)
++  } while(0)
 +
-+  if (IS_ELF32(*eh64))
-+    LOAD_ELF(Elf32_Ehdr, Elf32_Phdr, Elf32_Shdr, Elf32_Sym);
-+  else
-+    LOAD_ELF(Elf64_Ehdr, Elf64_Phdr, Elf64_Shdr, Elf64_Sym);
++  if (IS_ELFLE(*eh64)) {
++    if (IS_ELF32(*eh64))
++      LOAD_ELF(Elf32_Ehdr, Elf32_Phdr, Elf32_Shdr, Elf32_Sym, from_le);
++    else
++      LOAD_ELF(Elf64_Ehdr, Elf64_Phdr, Elf64_Shdr, Elf64_Sym, from_le);
++  } else {
++    if (IS_ELF32(*eh64))
++      LOAD_ELF(Elf32_Ehdr, Elf32_Phdr, Elf32_Shdr, Elf32_Sym, from_be);
++    else
++      LOAD_ELF(Elf64_Ehdr, Elf64_Phdr, Elf64_Shdr, Elf64_Sym, from_be);
++  }
 +
 +  munmap(buf, size);
 +}
-\ No newline at end of file
 diff --git a/src/simulator/simulator/elfloader.h b/src/simulator/simulator/elfloader.h
 new file mode 100644
-index 0000000..52c37b0
+index 0000000..50eb7e8
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.h
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,225 @@
 +#ifndef _ELFLOADER_H
 +#define _ELFLOADER_H
 +
@@ -1009,6 +1076,27 @@ index 0000000..52c37b0
 +#define IS_ELF_RISCV(hdr) (IS_ELF(hdr) && (hdr).e_machine == EM_RISCV)
 +#define IS_ELF_EM_NONE(hdr) (IS_ELF(hdr) && (hdr).e_machine == EM_NONE)
 +#define IS_ELF_VCURRENT(hdr) (IS_ELF(hdr) && (hdr).e_version == EV_CURRENT)
++
++static inline uint8_t swap(uint8_t n) { return n; }
++static inline uint16_t swap(uint16_t n) { return (n >> 8) | (n << 8); }
++static inline uint32_t swap(uint32_t n) { return (swap(uint16_t(n)) << 16) | swap(uint16_t(n >> 16)); }
++static inline uint64_t swap(uint64_t n) { return (uint64_t(swap(uint32_t(n))) << 32) | swap(uint32_t(n >> 32)); }
++static inline int8_t swap(int8_t n) { return n; }
++static inline int16_t swap(int16_t n) { return int16_t(swap(uint16_t(n))); }
++static inline int32_t swap(int32_t n) { return int32_t(swap(uint32_t(n))); }
++static inline int64_t swap(int64_t n) { return int64_t(swap(uint64_t(n))); }
++
++#ifdef WORDS_BIGENDIAN
++template<typename T> static inline T from_be(T n) { return n; }
++template<typename T> static inline T to_be(T n) { return n; }
++template<typename T> static inline T from_le(T n) { return swap(n); }
++template<typename T> static inline T to_le(T n) { return swap(n); }
++#else
++template<typename T> static inline T from_le(T n) { return n; }
++template<typename T> static inline T to_le(T n) { return n; }
++template<typename T> static inline T from_be(T n) { return swap(n); }
++template<typename T> static inline T to_be(T n) { return swap(n); }
++#endif
 +
 +#define PT_LOAD 1
 +
@@ -1169,9 +1257,12 @@ index 0000000..52c37b0
 +  chunked_memif_t* cmemif;
 +};
 +
++uint64_t elf_get_symbol_addr(const char* sym);
 +char elfloader_get_section (long long* address, long long* len);
 +char elfloader_read_section (long long address, unsigned char * buf);
-+void elfloader_read_elf(const char* filename, long long dest_size, long long dest_base_addr, unsigned char * dest_buffer);
++void elfloader_read_elf(const char* filename,
++                        std::vector<uint64_t>& dest_size,
++                        std::vector<uint64_t>& dest_base,
++                        std::vector<unsigned char*>& dest_buffer);
 +
 +#endif
-\ No newline at end of file
