@@ -594,7 +594,7 @@ index 0000000..a9ab650
 +};
 diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..17940ba
+index 0000000..e23fca7
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_lib.cpp
 @@ -0,0 +1,294 @@
@@ -681,7 +681,7 @@ index 0000000..17940ba
 +    list_of_wstrobe.push_back(wstrobe_ptr);
 +
 +
-+    std::cout << "the instantiated DRAM id is: " << id << std::endl;
++    std::cout << "[DRAMSys] DRAM " << id << " is added with base address 0x" << std::hex << dram_base << std::endl;
 +
 +    int res = id;
 +    id += 1;
@@ -840,9 +840,9 @@ index 0000000..17940ba
 +    if (f.good())
 +    {
 +        elfloader_read_elf(app_binary.c_str(), list_of_DRAMsize, list_of_DRAMbase, list_of_DRAMbuf_ptr);
-+        std::cout << "[DRAMSys] Load elf file [" << app_binary << "] in DRAM " << std::endl;
++        std::cout << "[DRAMSys] Load elf file" << app_binary << " to DRAM " << std::endl;
 +    } else {
-+        std::cout << "[DRAMSys] Can not Load elf file [" << app_binary << "] in DRAM : File not found"<< std::endl;
++        std::cout << "[DRAMSys] Can not Load elf file" << app_binary << " : File not found"<< std::endl;
 +    }
 +}
 +
@@ -851,12 +851,12 @@ index 0000000..17940ba
 +    //Memory pre-loading
 +    std::string read_byte;
 +    uint64_t addr = addr_ofst;
-+    std::cout << "Load mem file [" << mem_path << "] in DRAM id " << dram_id << " from addr " << addr_ofst << std::endl;
++    std::cout << "[DRAMSys] Load mem file [" << mem_path << "] in DRAM id " << dram_id << " from addr " << addr_ofst << std::endl;
 +    std::ifstream MemFile(mem_path);
 +    //sanity check
 +    if (!MemFile.good())
 +    {
-+        std::cout << "Can not Load Mem file [" << mem_path << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
++        std::cout << "[DRAMSys] Can not Load Mem file [" << mem_path << "] in DRAM id " << dram_id << " : File not found"<< std::endl;
 +        return;
 +    }
 +
@@ -894,7 +894,7 @@ index 0000000..17940ba
 +}
 diff --git a/src/simulator/simulator/elfloader.cpp b/src/simulator/simulator/elfloader.cpp
 new file mode 100644
-index 0000000..cf2f511
+index 0000000..e95266c
 --- /dev/null
 +++ b/src/simulator/simulator/elfloader.cpp
 @@ -0,0 +1,137 @@
@@ -924,7 +924,7 @@ index 0000000..cf2f511
 +                assert( address - dest_base[i] + j < dest_size[i]);
 +                dest_buffer[i][address - dest_base[i] + j] = buf[j];
 +            }
-+            std::cout << "[DRAMSys] elfloader section addr: 0x" << std::hex << address << " len: 0x" << len << " to channel " << i << std::endl;
++            std::cout << "[DRAMSys] elfloader section addr: 0x" << std::hex << address << " len: 0x" << len << " to DRAM " << i << std::endl;
 +            return;
 +        }
 +    }

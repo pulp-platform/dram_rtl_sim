@@ -90,25 +90,25 @@ initial begin
     endcase
 
     if (CustomerDRAM != "none") begin
-        simulationJson_path = {resources_path,"/",CustomerDRAM,".json"};
-        $display("Use Customer DRAM configuration: %s\n",simulationJson_path);
+        simulationJson_path = {resources_path, "/", CustomerDRAM, ".json"};
+        $display("[DRAMSys] Use Customer DRAM configuration: %s",simulationJson_path);
     end
 
-    $display("resources_path= %s\n",resources_path);
-    $display("simulationJson_path= %s\n",simulationJson_path);
+    $display("[DRAMSys] resources_path=%s", resources_path);
+    $display("[DRAMSys] simulationJson_path=%s", simulationJson_path);
     if (resources_path.len() == 0 || simulationJson_path.len() == 0) begin
-        $fatal(1,"no DRAMsys configuration found!");
+        $fatal(1,"[DRAMSys] no DRAMsys configuration found!");
     end
     dram_id = add_dram(resources_path, simulationJson_path, BASE);
     void'($value$plusargs("ONE_DRAM_PRELOAD=%s", app_path));
     if (app_path.len() != 0) begin
-        $display("[DRAMSys] Preloading elf: %s\n",app_path);
+        $display("[DRAMSys] Preloading elf: %s\n", app_path);
         dram_load_elf(app_path);
     end
 
     void'($value$plusargs("MEM=%s", mem_path));
     if (mem_path.len() != 0) begin
-        $display("[DRAMSys] Preloading mem: %s\n",mem_path);
+        $display("[DRAMSys] Preloading mem: %s\n", mem_path);
         dram_load_memfile(dram_id, 0, mem_path);
     end
 end
