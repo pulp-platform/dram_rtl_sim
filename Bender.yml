@@ -11,8 +11,14 @@ package:
 dependencies:
   axi:                 { git: "https://github.com/pulp-platform/axi.git",                 version: 0.39.1 } #0.38.0
 
+vendor_package:
+  - name: DRAMSys
+    target_dir: dramsys_lib/DRAMSys
+    upstream: { git: https://github.com/tukl-msd/DRAMSys.git, rev: 8e021eada2cb937d5be24dbd02f3980e2193d6ec }
+    patch_dir: dramsys_lib_patch
+
 sources:
-  #level 1 
+  #level 1
   - src/sim_dram.sv
   - src/axi_dram_sim.sv
   - src/dram_sim_engine.sv
