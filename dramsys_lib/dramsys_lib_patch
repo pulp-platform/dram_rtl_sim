@@ -229,7 +229,7 @@ index 35f2ddf..3cff9dd 100644
  #include <DRAMSys/simulation/DRAMSysRecordable.h>
 diff --git a/src/simulator/simulator/dramsys_conv.h b/src/simulator/simulator/dramsys_conv.h
 new file mode 100644
-index 0000000..7068569
+index 0000000..925b420
 --- /dev/null
 +++ b/src/simulator/simulator/dramsys_conv.h
 @@ -0,0 +1,376 @@
@@ -596,7 +596,7 @@ index 0000000..7068569
 +
 +
 +    SC_CTOR(dramsys_conv):
-+    max_pending_req(1),
++    max_pending_req(2),
 +    inflight_read_cnt(0),
 +    memoryManager(true),
 +    iSocket("socket"),
