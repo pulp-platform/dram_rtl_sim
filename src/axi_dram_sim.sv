@@ -1,4 +1,4 @@
-// Copyright 2023 ETH Zurich and 
+// Copyright 2023 ETH Zurich and
 // University of Bologna
 
 // Solderpad Hardware License
@@ -23,9 +23,9 @@ module axi_dram_sim #(
     //DRAM Base Addr
     parameter longint unsigned BASE         = 64'h80000000,
     //DRAM type
-    parameter              DRAMType         = "DDR4",   
-    parameter              CustomerDRAM     = "none",   
-    // AXI interface 
+    parameter              DRAMType         = "DDR4",
+    parameter              CustomerDRAM     = "none",
+    // AXI interface
     parameter type         axi_req_t        = logic,
     parameter type         axi_resp_t       = logic,
     parameter type         axi_ar_t         = logic,
@@ -42,7 +42,7 @@ module axi_dram_sim #(
     input   axi_req_t                       axi_req_i,
     output  axi_resp_t                      axi_resp_o
  );
- 
+
     //define port to DRAM
     localparam int unsigned DramAddrWidth   = AxiAddrWidth;
     localparam int unsigned DramDataWidth   = 512;
@@ -219,4 +219,4 @@ module axi_dram_sim #(
 
 
 
-endmodule : axi_dram_sim 
+endmodule : axi_dram_sim
