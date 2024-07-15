@@ -9,6 +9,10 @@ VLOG_ARGS = -svinputport=compat -override_timescale 1ns/1ps -suppress 2583 -supp
 library ?= work
 top_level ?= axi_to_dram_tb
 
+DRAM_RTL_SIM_ROOT = $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
+
+# Recipes to build DRAMSys
+include dram_rtl_sim.mk
 
 # Path to DRAMsyslib
 dramsys_resouces_path ?= ../dramsys_lib/DRAMSys/configs
