@@ -13,9 +13,11 @@ dependencies:
 
 sources:
   #level 1 
-  - src/sim_dram.sv
-  - src/axi_dram_sim.sv
-  - src/dram_sim_engine.sv
+  - target: any(simulation, verilator)
+    files:
+      - src/sim_dram.sv
+      - src/axi_dram_sim.sv
+      - src/dram_sim_engine.sv
 
   - target: test
     files:
