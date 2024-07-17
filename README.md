@@ -12,27 +12,14 @@ This tool aids in system-level hardware simulations, particularly for large chip
 
 ### 🔨 Build DRAMSys Dynamic Linkable Library
 
-Follow the steps below to build the DRAMSys dynamic linkable libraries:
+To download, patch, and build the DRAMSys dynamic linkable libraries, run
+```shell
+make -j dramsys
+```
 
-1. Clone the DRAMSys5.0 repository and apply the necessary patches:
-    ```shell
-    cd dramsys_lib
-    git clone https://github.com/tukl-msd/DRAMSys.git
-    cd DRAMSys
-    git reset --hard 8e021ea
-    git apply ../dramsys_lib_patch
-    ```
-
-2. Build the DRAMSys dynamic linkable library within the `dramsys_lib/DRAMSys` directory:
-    ```shell
-    mkdir build
-    cd build
-    cmake -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON ..
-    make -j
-    ```
-    After building, two key libraries will be available in `dramsys_lib/DRAMSys/build/lib`:
-    - `libsystemc.so`
-    - `libDRAMSys_Simulator.so`
+After building, two key libraries will be available in `dramsys_lib/DRAMSys/build/lib`:
+- `libsystemc.so`
+- `libDRAMSys_Simulator.so`
 
 ### 🧪 (Optional) Test RTL-DRAMSys Co-simulation
 
