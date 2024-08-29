@@ -12,9 +12,6 @@ DRAMSYS_BUILD_DIR ?= $(DRAMSYS_ROOT)/build
 
 dramsys: $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so
 
-$(DRAMSYS_BUILD_DIR):
-	mkdir -p $@
-
 # Clone and patch DRAMSys
 $(DRAMSYS_ROOT)/.patched:
 	rm -rf $(DRAMSYS_ROOT)
@@ -23,6 +20,7 @@ $(DRAMSYS_ROOT)/.patched:
 	@touch $@
 
 # Build DRAMSys
-$(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(DRAMSYS_ROOT)/.patched $(DRAMSYS_BUILD_DIR)
+$(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(DRAMSYS_ROOT)/.patched
+	mkdir -p $(DRAMSYS_BUILD_DIR)
 	cd $(DRAMSYS_BUILD_DIR) && $(CMAKE) -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON $(DRAMSYS_ROOT)
 	$(MAKE) -C $(DRAMSYS_BUILD_DIR)
