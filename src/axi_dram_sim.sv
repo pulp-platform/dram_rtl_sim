@@ -59,8 +59,8 @@ module axi_dram_sim #(
     dram_axi_resp_t                         dram_axi_resp;
 
 
-    axi_dw_converter #(
-        .AxiMaxReads        (64),
+    axi_up_conv #(
+        .AxiMaxReads        (16),
         .AxiSlvPortDataWidth(AxiDataWidth),
         .AxiMstPortDataWidth(DramDataWidth),
         .AxiAddrWidth       (AxiAddrWidth),

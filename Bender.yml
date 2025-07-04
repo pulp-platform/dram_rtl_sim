@@ -16,6 +16,7 @@ sources:
   - target: any(simulation, verilator)
     files:
       - src/sim_dram.sv
+      - src/axi_up_conv.sv
       - src/axi_dram_sim.sv
       - src/dram_sim_engine.sv
 
