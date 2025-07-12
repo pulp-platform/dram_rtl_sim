@@ -60,31 +60,30 @@ module axi_dram_sim #(
 
 
     axi_up_conv #(
-        .AxiMaxReads        (16),
-        .AxiSlvPortDataWidth(AxiDataWidth),
-        .AxiMstPortDataWidth(DramDataWidth),
-        .AxiAddrWidth       (AxiAddrWidth),
-        .AxiIdWidth         (AxiIdWidth),
-        .aw_chan_t          (axi_aw_t),
-        .mst_w_chan_t       (dram_axi_w_chan_t),
-        .slv_w_chan_t       (axi_w_t),
-        .b_chan_t           (axi_b_t),
-        .ar_chan_t          (axi_ar_t),
-        .mst_r_chan_t       (dram_axi_r_chan_t),
-        .slv_r_chan_t       (axi_r_t),
-        .axi_mst_req_t      (dram_axi_req_t),
-        .axi_mst_resp_t     (dram_axi_resp_t),
-        .axi_slv_req_t      (axi_req_t),
-        .axi_slv_resp_t     (axi_resp_t)
+        .AxiMaxReads        (64                 ),
+        .AxiSlvPortDataWidth(AxiDataWidth       ),
+        .AxiMstPortDataWidth(DramDataWidth      ),
+        .AxiAddrWidth       (AxiAddrWidth       ),
+        .AxiIdWidth         (AxiIdWidth         ),
+        .aw_chan_t          (axi_aw_t           ),
+        .mst_w_chan_t       (dram_axi_w_chan_t  ),
+        .slv_w_chan_t       (axi_w_t            ),
+        .b_chan_t           (axi_b_t            ),
+        .ar_chan_t          (axi_ar_t           ),
+        .mst_r_chan_t       (dram_axi_r_chan_t  ),
+        .slv_r_chan_t       (axi_r_t            ),
+        .axi_mst_req_t      (dram_axi_req_t     ),
+        .axi_mst_resp_t     (dram_axi_resp_t    ),
+        .axi_slv_req_t      (axi_req_t          ),
+        .axi_slv_resp_t     (axi_resp_t         )
     ) i_axi_dw_converter (
         .clk_i,
         .rst_ni,
-        .slv_req_i (axi_req_i ),
-        .slv_resp_o(axi_resp_o),
-        .mst_req_o (dram_axi_req ),
-        .mst_resp_i(dram_axi_resp)
+        .slv_req_i (axi_req_i       ),
+        .slv_resp_o(axi_resp_o      ),
+        .mst_req_o (dram_axi_req    ),
+        .mst_resp_i(dram_axi_resp   )
     );
-
 
     `AXI_LITE_TYPEDEF_ALL(dram_axi_lite, addr_t, data_t, strb_t)
 
@@ -93,25 +92,25 @@ module axi_dram_sim #(
 
 
     axi_to_axi_lite #(
-    .AxiAddrWidth   (AxiAddrWidth),
-    .AxiDataWidth   (DramDataWidth),
-    .AxiIdWidth     (AxiIdWidth),
-    .AxiUserWidth   (AxiUserWidth),
-    .AxiMaxWriteTxns(64),
-    .AxiMaxReadTxns (64),
-    .FallThrough    (0),
-    .full_req_t     (dram_axi_req_t),
-    .full_resp_t    (dram_axi_resp_t),
-    .lite_req_t     (dram_axi_lite_req_t),
-    .lite_resp_t    (dram_axi_lite_resp_t)
-    ) i_axi_to_axi_lite (
-    .clk_i,
-    .rst_ni,
-    .test_i    ('0        ),
-    .slv_req_i (dram_axi_req ),
-    .slv_resp_o(dram_axi_resp),
-    .mst_req_o (dram_axi_lite_req ),
-    .mst_resp_i(dram_axi_lite_resp )
+        .AxiAddrWidth   (AxiAddrWidth),
+        .AxiDataWidth   (DramDataWidth),
+        .AxiIdWidth     (AxiIdWidth),
+        .AxiUserWidth   (AxiUserWidth),
+        .AxiMaxWriteTxns(64),
+        .AxiMaxReadTxns (64),
+        .FallThrough    (0),
+        .full_req_t     (dram_axi_req_t),
+        .full_resp_t    (dram_axi_resp_t),
+        .lite_req_t     (dram_axi_lite_req_t),
+        .lite_resp_t    (dram_axi_lite_resp_t)
+        ) i_axi_to_axi_lite (
+        .clk_i,
+        .rst_ni,
+        .test_i    ('0        ),
+        .slv_req_i (dram_axi_req ),
+        .slv_resp_o(dram_axi_resp),
+        .mst_req_o (dram_axi_lite_req ),
+        .mst_resp_i(dram_axi_lite_resp )
     );
 
 
@@ -202,20 +201,20 @@ module axi_dram_sim #(
 
 
     sim_dram #(.DataWidth(DramDataWidth), .AddrWidth(DramAddrWidth), .DRAMType(DRAMType), .CustomerDRAM(CustomerDRAM), .BASE(BASE)) i_sim_dram (
-    .clk_i,
-    .rst_ni,
-    .req_valid_i(dramsys_req),
-    .req_ready_o(dramsys_rsp),
-    .we_i       (dramsys_we       ),
-    .addr_i     (dramsys_addr     ),
-    .wdata_i    (dramsys_wdata    ),
-    .wstrb_i    (dramsys_wstrb    ),
-    .rsp_valid_o(dramsys_rvalid),
-    .rsp_ready_i(dramsys_rready),
-    .rdata_o    (dramsys_rdata    ),
-    .b_valid_o  (dram_axi_lite_resp.b_valid),
-    .b_ready_i  (dram_axi_lite_req.b_ready)
-  );
+        .clk_i,
+        .rst_ni,
+        .req_valid_i(dramsys_req),
+        .req_ready_o(dramsys_rsp),
+        .we_i       (dramsys_we       ),
+        .addr_i     (dramsys_addr     ),
+        .wdata_i    (dramsys_wdata    ),
+        .wstrb_i    (dramsys_wstrb    ),
+        .rsp_valid_o(dramsys_rvalid),
+        .rsp_ready_i(dramsys_rready),
+        .rdata_o    (dramsys_rdata    ),
+        .b_valid_o  (dram_axi_lite_resp.b_valid),
+        .b_ready_i  (dram_axi_lite_req.b_ready)
+      );
 
 
 

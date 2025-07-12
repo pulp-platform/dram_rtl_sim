@@ -154,18 +154,20 @@ module axi_up_conv #(
   logic     [AxiMaxReads-1:0] mst_ar_valid_tran;
   logic     [AxiMaxReads-1:0] mst_ar_ready_tran;
   tran_id_t                   mst_req_idx;
+  tran_id_t                   mst_rr_select;
 
+  // Use fixed arbitration to ensure ordering in same ID
   rr_arb_tree #(
     .NumIn    (AxiMaxReads),
     .DataType (ar_chan_t  ),
     .AxiVldRdy(1'b1       ),
-    .ExtPrio  (1'b0       ),
-    .LockIn   (1'b1       )
+    .ExtPrio  (1'b1       ),
+    .LockIn   (1'b0       )
   ) i_mst_ar_arb (
     .clk_i  (clk_i            ),
     .rst_ni (rst_ni           ),
     .flush_i(1'b0             ),
-    .rr_i   ('0               ),
+    .rr_i   (mst_rr_select    ),
     .req_i  (mst_ar_valid_tran),
     .gnt_o  (mst_ar_ready_tran),
     .data_i (mst_ar_tran      ),
@@ -174,6 +176,48 @@ module axi_up_conv #(
     .data_o (mst_req.ar       ),
     .idx_o  (mst_req_idx      )
   );
+
+  typedef struct packed {
+    tran_id_t upsizer_slot;   // Which upsizer handles this request
+    id_t      axi_id;         // Original AXI ID
+  } ar_fifo_entry_t;
+
+  ar_fifo_entry_t ar_fifo_in;
+  ar_fifo_entry_t ar_fifo_out;
+  logic  ar_fifo_push, ar_fifo_pop, ar_fifo_full, ar_fifo_empty;
+
+  logic [AxiMaxReads-1:0] ar_push_per_upszier;
+
+  assign ar_fifo_push = mst_req.ar_valid & mst_resp.ar_ready;
+
+  assign ar_fifo_in.upsizer_slot  = mst_req_idx;
+  assign ar_fifo_in.axi_id  = mst_req.ar.id;
+
+
+  logic [$clog2(AxiMaxReads)-1:0] ar_fifo_usage;
+
+  fifo_v3 #(
+    .FALL_THROUGH (1'b0),
+    .DATA_WIDTH   ($bits(ar_fifo_entry_t)),
+    .DEPTH        (AxiMaxReads)
+  ) i_ar_fifo (
+    .clk_i      (clk_i),
+    .rst_ni     (rst_ni),
+    .flush_i    (1'b0),
+    .testmode_i (1'b0),
+    .full_o     (ar_fifo_full ),
+    .empty_o    (ar_fifo_empty),
+    .usage_o    (ar_fifo_usage),
+    .data_i     (ar_fifo_in   ),
+    .push_i     (ar_fifo_push ),
+    .data_o     (ar_fifo_out  ),
+    .pop_i      (ar_fifo_pop  )
+  );
+
+  // Delay the signal for one cycle
+  logic ar_fifo_push_d, ar_fifo_push_q;
+  // Push into the fifo when we accept the ar
+  assign ar_fifo_push_d = arb_slv_ar_req & arb_slv_ar_gnt;
 
   /*****************
    *  ERROR SLAVE  *
@@ -284,40 +328,9 @@ module axi_up_conv #(
     .bin   (idx_id_clash_upsizer)
   );
 
-  typedef struct packed {
-    tran_id_t upsizer_slot;   // Which upsizer handles this request
-    id_t      axi_id;         // Original AXI ID
-  } ar_fifo_entry_t;
-
-  ar_fifo_entry_t ar_fifo_in;
-  ar_fifo_entry_t ar_fifo_out;
-  logic  ar_fifo_push, ar_fifo_pop, ar_fifo_full, ar_fifo_empty;
-
-  logic [$clog2(AxiMaxReads)-1:0] ar_fifo_usage;
-
-  fifo_v3 #(
-    .FALL_THROUGH (1'b0),
-    .DATA_WIDTH   ($bits(ar_fifo_entry_t)),
-    .DEPTH        (AxiMaxReads)
-  ) i_ar_fifo (
-    .clk_i      (clk_i),
-    .rst_ni     (rst_ni),
-    .flush_i    (1'b0),
-    .testmode_i (1'b0),
-    .full_o     (ar_fifo_full ),
-    .empty_o    (ar_fifo_empty),
-    .usage_o    (ar_fifo_usage),
-    .data_i     (ar_fifo_in   ),
-    .push_i     (ar_fifo_push ),
-    .data_o     (ar_fifo_out  ),
-    .pop_i      (ar_fifo_pop  )
-  );
-
 
   // Choose an idle upsizer, unless there is an id clash
   // assign idx_ar_upsizer = (|id_clash_upsizer) ? idx_id_clash_upsizer : idx_idle_upsizer;
-
-
 
   assign idx_ar_upsizer = idx_idle_upsizer;
 
@@ -326,17 +339,42 @@ module axi_up_conv #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : ar_upsizer_ff
     if(~rst_ni) begin
+      ar_fifo_push_q <= 0;
       idx_ar_upsizer_q <= 0;
     end else begin
+      ar_fifo_push_q <= ar_fifo_push_d;
       idx_ar_upsizer_q <= idx_ar_upsizer_d;
     end
   end
 
-  // `ifdef UPSIZER_NO_ID_CLASH
-  // assign idx_ar_upsizer = idx_idle_upsizer; // Ignore ID clash (test env assumption)
-  // `else
-  // assign idx_ar_upsizer = (|id_clash_upsizer) ? idx_id_clash_upsizer : idx_idle_upsizer; // Original logic
-  // `endif
+  logic      ar_upsizer_full, ar_upsizer_empty, ar_upsizer_pop, ar_upsizer_push;
+  ar_fifo_entry_t  ar_upsizer_in, ar_upsizer_out;
+  logic [$clog2(AxiMaxReads)-1:0] ar_upsizer_usage;
+
+  assign ar_upsizer_in.upsizer_slot = idx_ar_upsizer;
+  assign ar_upsizer_in.axi_id = arb_slv_ar_id;
+  assign ar_upsizer_push = arb_slv_ar_req & arb_slv_ar_gnt;
+  assign ar_upsizer_pop = mst_req.ar_valid & mst_resp.ar_ready;
+  assign mst_rr_select = ar_upsizer_out.upsizer_slot;
+
+  // we use a fifo to record the order of upsizer selected to ensure the output ordering
+  fifo_v3 #(
+    .FALL_THROUGH (1'b0),
+    .DATA_WIDTH   ($bits(ar_fifo_entry_t)),
+    .DEPTH        (AxiMaxReads)
+  ) i_upsizer_fifo (
+    .clk_i      (clk_i ),
+    .rst_ni     (rst_ni),
+    .flush_i    (1'b0),
+    .testmode_i (1'b0),
+    .full_o     (ar_upsizer_full ),
+    .empty_o    (ar_upsizer_empty),
+    .usage_o    (ar_upsizer_usage),
+    .data_i     (ar_upsizer_in   ),
+    .push_i     (ar_upsizer_push ),
+    .data_o     (ar_upsizer_out  ),
+    .pop_i      (ar_upsizer_pop  )
+  );
 
 
   // This logic is used to resolve which upsizer is handling
@@ -378,15 +416,7 @@ module axi_up_conv #(
   // Byte-grouped data signal for the lane steering step
   slv_data_t [AxiMaxReads-1:0] r_data;
 
-  logic [AxiMaxReads-1:0] ar_pop_per_upszier;
-
-  // assign ar_fifo_pop = mst_resp.r_valid && !ar_fifo_empty && slv_req_i.r_ready;
-  // assign ar_fifo_pop = |ar_pop_per_upszier;
-
-  assign ar_fifo_push = |(mst_ar_valid_tran & mst_ar_ready_tran);
-
-  assign ar_fifo_in.upsizer_slot  = idx_ar_upsizer_q;
-  assign ar_fifo_in.axi_id  = arb_slv_ar_id;
+  tran_id_t resp_upsizer;
 
   always_comb begin
     for (int t = 0; t < AxiMaxReads; t++) begin
@@ -395,8 +425,10 @@ module axi_up_conv #(
       ar_fifo_pop = 1'b0; // initialize
     end
 
+    resp_upsizer = '0;
+
     if (mst_resp.r_valid && !ar_fifo_empty) begin
-      automatic tran_id_t resp_upsizer = ar_fifo_out.upsizer_slot;
+      resp_upsizer = ar_fifo_out.upsizer_slot;
 
       // Directly assign the response
       // slv_r_tran[resp_upsizer]       = mst_resp.r;
@@ -424,6 +456,8 @@ module axi_up_conv #(
       mst_ar_tran[t]       = r_req_q[t].ar      ;
       mst_ar_id[t]         = r_req_q[t].ar.id   ;
       mst_ar_valid_tran[t] = r_req_q[t].ar_valid;
+      // Debug use only
+      // mst_ar_tran[t].user  = t;
 
       // ar_pop_per_upszier[t] = 1'b0;
 
@@ -438,6 +472,7 @@ module axi_up_conv #(
       slv_r_tran[t].user = mst_resp.r.user;
 
       arb_slv_ar_gnt_tran[t] = 1'b0;
+      ar_push_per_upszier[t] = 1'b0;
 
       // mst_r_ready_tran[t] = 1'b0;
       // slv_r_valid_tran[t] = 1'b0;
