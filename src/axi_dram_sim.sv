@@ -56,34 +56,80 @@ module axi_dram_sim #(
     `AXI_TYPEDEF_ALL(dram_axi, addr_t, id_t, data_t, strb_t, user_t)
 
     dram_axi_req_t                          dram_axi_req;
-    dram_axi_resp_t                         dram_axi_resp;
+    dram_axi_resp_t                         dram_axi_resp, dram_axi_resp_fill_user;
 
-
-    axi_up_conv #(
-        .AxiMaxReads        (64                 ),
-        .AxiSlvPortDataWidth(AxiDataWidth       ),
-        .AxiMstPortDataWidth(DramDataWidth      ),
-        .AxiAddrWidth       (AxiAddrWidth       ),
-        .AxiIdWidth         (AxiIdWidth         ),
-        .aw_chan_t          (axi_aw_t           ),
-        .mst_w_chan_t       (dram_axi_w_chan_t  ),
-        .slv_w_chan_t       (axi_w_t            ),
-        .b_chan_t           (axi_b_t            ),
-        .ar_chan_t          (axi_ar_t           ),
-        .mst_r_chan_t       (dram_axi_r_chan_t  ),
-        .slv_r_chan_t       (axi_r_t            ),
-        .axi_mst_req_t      (dram_axi_req_t     ),
-        .axi_mst_resp_t     (dram_axi_resp_t    ),
-        .axi_slv_req_t      (axi_req_t          ),
-        .axi_slv_resp_t     (axi_resp_t         )
+    axi_dw_converter #(
+        .AxiMaxReads        (64),
+        .AxiSlvPortDataWidth(AxiDataWidth),
+        .AxiMstPortDataWidth(DramDataWidth),
+        .AxiAddrWidth       (AxiAddrWidth),
+        .AxiIdWidth         (AxiIdWidth),
+        .aw_chan_t          (axi_aw_t),
+        .mst_w_chan_t       (dram_axi_w_chan_t),
+        .slv_w_chan_t       (axi_w_t),
+        .b_chan_t           (axi_b_t),
+        .ar_chan_t          (axi_ar_t),
+        .mst_r_chan_t       (dram_axi_r_chan_t),
+        .slv_r_chan_t       (axi_r_t),
+        .axi_mst_req_t      (dram_axi_req_t),
+        .axi_mst_resp_t     (dram_axi_resp_t),
+        .axi_slv_req_t      (axi_req_t),
+        .axi_slv_resp_t     (axi_resp_t)
     ) i_axi_dw_converter (
         .clk_i,
         .rst_ni,
-        .slv_req_i (axi_req_i       ),
-        .slv_resp_o(axi_resp_o      ),
-        .mst_req_o (dram_axi_req    ),
-        .mst_resp_i(dram_axi_resp   )
+        .slv_req_i (axi_req_i ),
+        .slv_resp_o(axi_resp_o),
+        .mst_req_o (dram_axi_req ),
+        .mst_resp_i(dram_axi_resp_fill_user)
     );
+
+    user_t  ar_user_in, aw_user_in;
+    user_t  ar_user_out, aw_user_out;
+    assign  ar_user_in = dram_axi_req.ar.user;
+    assign  aw_user_in = dram_axi_req.aw.user;
+
+    fifo_v3 #(
+        .FALL_THROUGH (1'b0         ),
+        .DATA_WIDTH   ($bits(user_t)),
+        .DEPTH        (64           )
+    ) i_ar_user_fifo (
+        .clk_i      (clk_i  ),
+        .rst_ni     (rst_ni ),
+        .flush_i    (1'b0   ),
+        .testmode_i (1'b0   ),
+        .full_o     ( ),
+        .empty_o    ( ),
+        .usage_o    ( ),
+        .data_i     (ar_user_in                                     ),
+        .push_i     (dram_axi_req.ar_valid & dram_axi_resp.ar_ready ),
+        .data_o     (ar_user_out                                    ),
+        .pop_i      (dram_axi_resp.r_valid & dram_axi_req.r_ready   )
+    );
+
+    fifo_v3 #(
+        .FALL_THROUGH (1'b0         ),
+        .DATA_WIDTH   ($bits(user_t)),
+        .DEPTH        (64           )
+    ) i_aw_user_fifo (
+        .clk_i      (clk_i  ),
+        .rst_ni     (rst_ni ),
+        .flush_i    (1'b0   ),
+        .testmode_i (1'b0   ),
+        .full_o     ( ),
+        .empty_o    ( ),
+        .usage_o    ( ),
+        .data_i     (aw_user_in                                     ),
+        .push_i     (dram_axi_req.aw_valid & dram_axi_resp.aw_ready ),
+        .data_o     (aw_user_out                                    ),
+        .pop_i      (dram_axi_resp.b_valid & dram_axi_req.b_ready   )
+    );
+
+    always_comb begin
+        dram_axi_resp_fill_user = dram_axi_resp;
+        dram_axi_resp_fill_user.r.user = ar_user_out;
+        dram_axi_resp_fill_user.b.user = aw_user_out;
+    end
 
     `AXI_LITE_TYPEDEF_ALL(dram_axi_lite, addr_t, data_t, strb_t)
 
