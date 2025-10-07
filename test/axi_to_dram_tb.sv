@@ -149,7 +149,7 @@ module axi_to_dram_tb;
         automatic axi_master_t::ax_beat_t ar = new ;
         automatic axi_master_t::r_beat_t r = new ;
 
-        ar = axi_master.new_rand_burst(0);
+        ar = axi_master.new_rand_burst(0, '0);
         ar.ax_len = 255;
         ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
         ar.ax_atop = axi_pkg::ATOP_NONE;
@@ -188,7 +188,7 @@ module axi_to_dram_tb;
         automatic axi_master_t::w_beat_t w = new ;
         automatic axi_master_t::b_beat_t b = new ;
 
-        aw = axi_master.new_rand_burst(0);
+        aw = axi_master.new_rand_burst(0, '0);
         aw.ax_len = 255;
         aw.ax_size = $clog2(AXI_DATA_WIDTH/8);
         aw.ax_atop = axi_pkg::ATOP_NONE;
