@@ -117,7 +117,7 @@ diff --git a/src/simulator/CMakeLists.txt b/src/simulator/CMakeLists.txt
 index a485bbd..8891e4e 100644
 --- a/src/simulator/CMakeLists.txt
 +++ b/src/simulator/CMakeLists.txt
-@@ -1,67 +1,28 @@
+@@ -1,67 +1,30 @@
 -# Copyright (c) 2020, RPTU Kaiserslautern-Landau
 -# All rights reserved.
 -#
@@ -179,8 +179,10 @@ index a485bbd..8891e4e 100644
      PUBLIC
          Threads::Threads
          DRAMSys::libdramsys
++    PRIVATE
++        stdc++fs
  )
- 
+
 -add_executable(DRAMSys
 -    main.cpp
 -)
