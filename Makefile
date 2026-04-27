@@ -5,6 +5,11 @@
 # Chi Zhang <chizhang@iis.ee.ethz.ch>
 
 BENDER ?= bender
+QUESTA ?= questa
+CMAKE ?= cmake
+
+
+
 VLOG_ARGS = -svinputport=compat -override_timescale 1ns/1ps -suppress 2583 -suppress 13314
 library ?= work
 top_level ?= axi_to_dram_tb
@@ -24,17 +29,17 @@ questa_args += -sv_lib $(dramsys_lib_path)/libsystemc
 questa_args += -sv_lib $(dramsys_lib_path)/libDRAMSys_Simulator
 
 all: compile
-	cd vsim && questa vsim -c $(library).$(top_level) -t 1ps -voptargs=+acc $(questa_args) -do start.tcl
+	cd vsim && $(QUESTA) vsim -c $(library).$(top_level) -t 1ps -voptargs=+acc $(questa_args) -do start.tcl
 
 gui: compile
-	cd vsim && questa vsim $(library).$(top_level) -t 1ps -voptargs=+acc $(questa_args) -do start.tcl
+	cd vsim && $(QUESTA) vsim $(library).$(top_level) -t 1ps -voptargs=+acc $(questa_args) -do start.tcl
 
-compile: vsim/compile.tcl
+compile: vsim/compile.tcl dramsys
 	echo "exit" >> vsim/compile.tcl
-	cd vsim && questa vsim -c -do compile.tcl
+	cd vsim && $(QUESTA) vsim -c -do compile.tcl
 
 vsim/compile.tcl: Bender.yml Makefile $(shell find src -type f) $(shell find test -type f) 
 	$(BENDER) script vsim -t test -t rtl --vlog-arg="$(VLOG_ARGS)" > $@
 
-clean:
+clean: dramsys-clean
 	cd vsim && rm -rf work/ vsim*  transcript  modelsim.ini compile.tcl .nfs* DRAM*

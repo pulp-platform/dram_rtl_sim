@@ -10,6 +10,9 @@ DRAM_RTL_SIM_ROOT ?= $(shell $(BENDER) path axi_dram_sim)
 DRAMSYS_ROOT ?= $(DRAM_RTL_SIM_ROOT)/dramsys_lib/DRAMSys
 DRAMSYS_BUILD_DIR ?= $(DRAMSYS_ROOT)/build
 
+CC ?= gcc
+CXX ?= g++
+
 dramsys: $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so
 
 # Clone and patch DRAMSys
@@ -24,3 +27,8 @@ $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(DRAMSYS_ROOT)/.patched
 	mkdir -p $(DRAMSYS_BUILD_DIR)
 	cd $(DRAMSYS_BUILD_DIR) && $(CMAKE) -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON -DENABLE_PTHREADS=ON $(DRAMSYS_ROOT)
 	$(MAKE) -C $(DRAMSYS_BUILD_DIR)
+
+.PHONY: dramsys-clean
+
+dramsys-clean:
+	rm -rf $(DRAMSYS_BUILD_DIR)/
