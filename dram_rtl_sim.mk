@@ -16,11 +16,11 @@ dramsys: $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so
 $(DRAMSYS_ROOT)/.patched:
 	rm -rf $(DRAMSYS_ROOT)
 	git clone https://github.com/tukl-msd/DRAMSys.git $(DRAMSYS_ROOT)
-	cd $(DRAMSYS_ROOT) && git reset --hard 8e021ea && git apply $(DRAM_RTL_SIM_ROOT)/dramsys_lib/dramsys_lib_patch
+	cd $(DRAMSYS_ROOT) && git reset --hard 1ddfb09ae69dd43306b3da59545a747bced8725c && git apply $(DRAM_RTL_SIM_ROOT)/dramsys_lib/dramsys_lib_patch
 	@touch $@
 
 # Build DRAMSys
 $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(DRAMSYS_ROOT)/.patched
 	mkdir -p $(DRAMSYS_BUILD_DIR)
-	cd $(DRAMSYS_BUILD_DIR) && $(CMAKE) -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON -DENABLE_PTHREADS=ON $(DRAMSYS_ROOT)
+	cd $(DRAMSYS_BUILD_DIR) && $(CMAKE) -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_USE_DRAMPOWER=ON $(DRAMSYS_ROOT)
 	$(MAKE) -C $(DRAMSYS_BUILD_DIR)
