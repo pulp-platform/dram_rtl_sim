@@ -9,7 +9,7 @@ package:
 
 
 dependencies:
-  axi:                 { git: "https://github.com/pulp-platform/axi.git",                 version: 0.39.1 } #0.38.0
+  axi:                 { git: "https://github.com/pulp-platform/axi.git", rev: common-cells-v2 }
 
 sources:
   #level 1 

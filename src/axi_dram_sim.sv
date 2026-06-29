@@ -107,7 +107,6 @@ module axi_dram_sim #(
     ) i_axi_to_axi_lite (
     .clk_i,
     .rst_ni,
-    .test_i    ('0        ),
     .slv_req_i (dram_axi_req ),
     .slv_resp_o(dram_axi_resp),
     .mst_req_o (dram_axi_lite_req ),
