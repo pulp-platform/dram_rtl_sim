@@ -11,7 +11,12 @@
 
 // Testbench for dram rtl simulator
 
-module axi_to_multi_dram_tb;
+module axi_to_multi_dram_tb #(
+    // Two DRAM instances of (by default) different types, to exercise a
+    // heterogeneous multi-DRAM setup. Override, e.g. -gDRAMType0=LPDDR4.
+    parameter DRAMType0 = "DDR4",
+    parameter DRAMType1 = "HBM2"
+) ();
 
     `include "axi/assign.svh"
     `include "axi/typedef.svh"
@@ -98,6 +103,7 @@ module axi_to_multi_dram_tb;
         .AxiDataWidth(AXI_DATA_WIDTH),
         .AxiIdWidth  (AXI_ID_WIDTH),
         .AxiUserWidth(AXI_USER_WIDTH),
+        .DRAMType    (DRAMType0),
         .BASE        (BASE),
         .axi_req_t   (axi_req_t),
         .axi_resp_t  (axi_resp_t),
@@ -118,6 +124,7 @@ module axi_to_multi_dram_tb;
         .AxiDataWidth(AXI_DATA_WIDTH),
         .AxiIdWidth  (AXI_ID_WIDTH),
         .AxiUserWidth(AXI_USER_WIDTH),
+        .DRAMType    (DRAMType1),
         .BASE        (BASE),
         .axi_req_t   (axi_req_t),
         .axi_resp_t  (axi_resp_t),
@@ -158,11 +165,12 @@ module axi_to_multi_dram_tb;
         automatic axi_master_t::ax_beat_t ar = new ;
         automatic axi_master_t::r_beat_t r = new ;
 
-        ar = axi_master.new_rand_burst(0);
-        ar.ax_len = 255;
+        ar = axi_master.new_rand_burst(0, '0);
+        // AXI4 forbids a burst crossing a 4 KiB page: cap at one page and page-align.
+        ar.ax_len = (4096/(AXI_DATA_WIDTH/8)) - 1;
         ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
         ar.ax_atop = axi_pkg::ATOP_NONE;
-        ar.ax_addr = (ar.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
+        ar.ax_addr = (ar.ax_addr>>12)<<12;
 
         $display("speedTest start!");
 
@@ -190,11 +198,12 @@ module axi_to_multi_dram_tb;
         automatic axi_master_t::ax_beat_t ar = new ;
         automatic axi_master_t::r_beat_t r = new ;
 
-        ar = axi_master_2.new_rand_burst(0);
-        ar.ax_len = 255;
+        ar = axi_master_2.new_rand_burst(0, '0);
+        // AXI4 forbids a burst crossing a 4 KiB page: cap at one page and page-align.
+        ar.ax_len = (4096/(AXI_DATA_WIDTH/8)) - 1;
         ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
         ar.ax_atop = axi_pkg::ATOP_NONE;
-        ar.ax_addr = (ar.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
+        ar.ax_addr = (ar.ax_addr>>12)<<12;
 
         $display("speedTest V2 start!");
 
@@ -223,6 +232,7 @@ module axi_to_multi_dram_tb;
         axi_master_2.reset();
         axi_master_2.add_memory_region(BASE + 0, BASE + 65636, axi_pkg::NORMAL_NONCACHEABLE_NONBUFFERABLE);
         @(posedge rst_n);
+        $display("---------- Multi-DRAM co-sim: DRAM0 = %s, DRAM1 = %s ---------", DRAMType0, DRAMType1);
         speedTest(100);
         speedTest_2(500);
         $finish;

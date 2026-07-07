@@ -24,3 +24,14 @@ jobs:
         cd dramsys_lib/DRAMSys/build
         cmake -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_USE_DRAMPOWER=ON ..
         make -j
+
+  test-all-drams:
+    # Requires a self-hosted runner with a licensed QuestaSim install (`questa`/`vsim` on PATH);
+    # GitHub-hosted runners cannot run this.
+    runs-on: [self-hosted, questa]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build DRAMSys
+      run: make dramsys
+    - name: Run RTL co-simulation for all DRAM models
+      run: make test-all-drams

@@ -472,7 +472,7 @@ new file mode 100644
 index 0000000..e845ed0
 --- /dev/null
 +++ b/apps/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,299 @@
 +#include "Simulator.h"
 +
 +#include <DRAMSys/configuration/json/DRAMSysConfiguration.h>
@@ -654,9 +654,11 @@ index 0000000..e845ed0
 +
 +
 +extern "C" void close_dram(int dram_id) {
++    // Deleting these sc_modules right after sc_stop() races the SystemC
++    // kernel's own teardown (pending threads/events still reference them),
++    // which corrupts the heap. The process exits right after this DPI call
++    // returns (called from the Verilog `final` block), so just leak them.
 +    if(dram_id == 0) sc_stop();
-+    delete list_of_conv[dram_id];
-+    delete list_of_DRAMsys[dram_id];
 +}
 +
 +
