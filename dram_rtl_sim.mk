@@ -9,14 +9,16 @@ CMAKE ?= cmake
 DRAM_RTL_SIM_ROOT ?= $(shell $(BENDER) path axi_dram_sim)
 DRAMSYS_ROOT ?= $(DRAM_RTL_SIM_ROOT)/dramsys_lib/DRAMSys
 DRAMSYS_BUILD_DIR ?= $(DRAMSYS_ROOT)/build
+DRAMSYS_REPO ?= git@github.com:smanoni/DRAMSys.git
+DRAMSYS_BRANCH ?= fix/pim-spec-fidelity
 
 dramsys: $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so
 
 # Clone and patch DRAMSys
 $(DRAMSYS_ROOT)/.patched:
 	rm -rf $(DRAMSYS_ROOT)
-	git clone https://github.com/tukl-msd/DRAMSys.git $(DRAMSYS_ROOT)
-	cd $(DRAMSYS_ROOT) && git reset --hard 1ddfb09ae69dd43306b3da59545a747bced8725c && git apply $(DRAM_RTL_SIM_ROOT)/dramsys_lib/dramsys_lib_patch
+	git clone --branch $(DRAMSYS_BRANCH) $(DRAMSYS_REPO) $(DRAMSYS_ROOT)
+	cd $(DRAMSYS_ROOT) && git apply $(DRAM_RTL_SIM_ROOT)/dramsys_lib/dramsys_lib_patch
 	@touch $@
 
 # Build DRAMSys
