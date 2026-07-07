@@ -12,7 +12,11 @@
 // Testbench for dram rtl simulator
 `timescale 1ns/1ps
 
-module axi_to_dram_tb;
+module axi_to_dram_tb #(
+    // DRAM model to co-simulate. Selects the DRAMSys config JSON in sim_dram
+    // (DDR3, DDR4, LPDDR4, HBM2). Override from the simulator, e.g. -gDRAMType=HBM2.
+    parameter DRAMType = "DDR4"
+) ();
 
     `include "axi/assign.svh"
     `include "axi/typedef.svh"
@@ -91,7 +95,7 @@ module axi_to_dram_tb;
         .AxiDataWidth(AXI_DATA_WIDTH),
         .AxiIdWidth  (AXI_ID_WIDTH),
         .AxiUserWidth(AXI_USER_WIDTH),
-        .DRAMType    ("DDR4"),
+        .DRAMType    (DRAMType),
         // .CustomerDRAM("ddr3-example2"),
         .BASE        (BASE),
         .axi_req_t   (axi_req_t),
@@ -149,11 +153,14 @@ module axi_to_dram_tb;
         automatic axi_master_t::ax_beat_t ar = new ;
         automatic axi_master_t::r_beat_t r = new ;
 
-        ar = axi_master.new_rand_burst(0);
-        ar.ax_len = 255;
+        ar = axi_master.new_rand_burst(0, '0);
+        // AXI4 forbids a burst crossing a 4 KiB page: cap at one page worth of
+        // beats and align the start address to 4 KiB (the per-burst stride below
+        // is exactly one page, so every burst stays page-aligned).
+        ar.ax_len = (4096/(AXI_DATA_WIDTH/8)) - 1;
         ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
         ar.ax_atop = axi_pkg::ATOP_NONE;
-        ar.ax_addr = (ar.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
+        ar.ax_addr = (ar.ax_addr>>12)<<12;
 
         $display("----------Testing DRAM Bulk Read Speed ---------");
         time_start = $time();
@@ -175,7 +182,7 @@ module axi_to_dram_tb;
         join
 
         time_end = $time();
-        bandwidth = (64*256*count) / (time_end - time_start);
+        bandwidth = (64*(ar.ax_len+1)*count) / (time_end - time_start);
 
         $display("speedTestRead done!: Bandwidth = %0f GB/s", bandwidth);
     endtask
@@ -188,11 +195,12 @@ module axi_to_dram_tb;
         automatic axi_master_t::w_beat_t w = new ;
         automatic axi_master_t::b_beat_t b = new ;
 
-        aw = axi_master.new_rand_burst(0);
-        aw.ax_len = 255;
+        aw = axi_master.new_rand_burst(0, '0);
+        // AXI4 forbids a burst crossing a 4 KiB page: cap at one page and page-align.
+        aw.ax_len = (4096/(AXI_DATA_WIDTH/8)) - 1;
         aw.ax_size = $clog2(AXI_DATA_WIDTH/8);
         aw.ax_atop = axi_pkg::ATOP_NONE;
-        aw.ax_addr = (aw.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
+        aw.ax_addr = (aw.ax_addr>>12)<<12;
 
         $display("----------Testing DRAM Bulk Write Speed ---------");
         time_start = $time();
@@ -209,11 +217,11 @@ module axi_to_dram_tb;
             //send w
             begin
                 for (int i = 0; i < count; i++) begin
-                    for (int j = 0; j < 256; j++) begin
+                    for (int j = 0; j < (aw.ax_len+1); j++) begin
                         w.randomize();
                         w.w_strb = {64{1'b1}};
                         w.w_last = 0;
-                        if (j == 255) begin
+                        if (j == aw.ax_len) begin
                             w.w_last = 1;
                         end
                         axi_master.drv.send_w(w);
@@ -230,7 +238,7 @@ module axi_to_dram_tb;
         join
 
         time_end = $time();
-        bandwidth = (64*256*count) / (time_end - time_start);
+        bandwidth = (64*(aw.ax_len+1)*count) / (time_end - time_start);
 
         $display("speedTestWrite done!: Bandwidth = %0f GB/s", bandwidth);
     endtask
@@ -241,6 +249,7 @@ module axi_to_dram_tb;
         axi_scoreboard_master.monitor();
         axi_master.add_memory_region(BASE + 0, BASE + 65636, axi_pkg::NORMAL_NONCACHEABLE_NONBUFFERABLE);
         @(posedge rst_n);
+        $display("---------- DRAM co-sim test, DRAMType = %s ---------", DRAMType);
         speedTestWrite(100);
         speedTestRead(100);
         $display("----------     ALL TESTS PASSED !!!        ---------");
