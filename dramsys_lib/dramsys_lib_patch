@@ -1,243 +1,99 @@
-diff --git a/configs/simconfig/example.json b/configs/simconfig/example.json
-index 6b65d7d..f64c3c5 100644
---- a/configs/simconfig/example.json
-+++ b/configs/simconfig/example.json
-@@ -8,7 +8,7 @@
-         "PowerAnalysis": false,
-         "SimulationName": "example",
-         "SimulationProgressBar": true,
--        "StoreMode": "NoStorage",
-+        "StoreMode": "Store",
-         "UseMalloc": false,
-         "WindowSize": 1000
-     }
-diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
-index 2dbaacd..3fa7ab5 100644
---- a/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
-+++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.cpp
-@@ -126,6 +126,40 @@ const Configuration& DRAMSys::getConfig() const
-     return config;
- }
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e7f4ebe..507e704 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -150,7 +150,13 @@ if (DRAMSYS_USE_FETCH_CONTENT_SYSTEMC)
+         URL https://github.com/accellera-official/systemc/archive/refs/tags/3.0.2.tar.gz
+         OVERRIDE_FIND_PACKAGE
+     )
++    # Build SystemC as a shared library (libsystemc.so) so the HDL simulator and
++    # the DPI shared library (libDRAMSys_Simulator.so) share a single SystemC
++    # kernel instance. Everything else stays static (DRAMSYS_SHARED_LIBS=OFF).
++    set(_DRAMSYS_SAVED_BSL ${BUILD_SHARED_LIBS})
++    set(BUILD_SHARED_LIBS ON)
+     FetchContent_MakeAvailable(SystemCLanguage)
++    set(BUILD_SHARED_LIBS ${_DRAMSYS_SAVED_BSL})
  
-+unsigned char * DRAMSys::getDramBasePointer()
-+{
-+    unsigned char * ptr = nullptr;
-+    for (auto& dram : drams)
-+        ptr = dram->getDramBasePointer();
-+    return ptr;
-+}
+     # Set include directories to SYSTEM to suppress warnings
+     set_target_properties(systemc PROPERTIES SYSTEM TRUE)
+diff --git a/apps/simulator/CMakeLists.txt b/apps/simulator/CMakeLists.txt
+index bd61c86..0518930 100644
+--- a/apps/simulator/CMakeLists.txt
++++ b/apps/simulator/CMakeLists.txt
+@@ -71,19 +71,42 @@ target_compile_definitions(simulator
+ 
+ add_library(DRAMSys::simulator ALIAS simulator)
+ 
+-add_executable(dramsys_bin
+-    main.cpp
++# The standalone DRAMSys CLI executable is not needed by the Cheshire/dram_rtl_sim
++# flow (which only loads libDRAMSys_Simulator.so). It is dropped to avoid an
++# unnecessary build/link step (and a GCC<9 std::filesystem link issue).
++if(DRAMSYS_BUILD_TESTS)
++    add_subdirectory(tests)
++endif()
 +
-+void DRAMSys::preloadByte(uint64_t addr, unsigned char data)
-+{
-+    if (config.storeMode == Configuration::StoreMode::Store )
-+    {
-+        // uint64_t phy_addr = addressDecoder->decodeAddress(addr);
-+        for (auto& dram : drams)
-+            dram->preloadByteInDram(addr,data);
-+    }else{
-+        SC_REPORT_FATAL(this->name(), "Storage not configured!");
-+    }
++########################################
++###   DRAMSys::Simulator (DPI .so)   ###
++########################################
++# Cheshire / dram_rtl_sim loads this shared object via the HDL simulator's
++# `-sv_lib` (libDRAMSys_Simulator). It bundles the simulator object code plus
++# the DPI glue (dramsys_lib.cpp) and the ELF loader. Output lands in build/lib
++# via the top-level CMAKE_LIBRARY_OUTPUT_DIRECTORY.
++set_target_properties(simulator PROPERTIES POSITION_INDEPENDENT_CODE ON)
 +
-+}
-+
-+unsigned char DRAMSys::checkByte(uint64_t addr)
-+{
-+    if (config.storeMode == Configuration::StoreMode::Store )
-+    {
-+        // uint64_t phy_addr = addressDecoder->decodeAddress(addr);
-+        for (auto& dram : drams)
-+            return dram->checkByte(addr);
-+    }else{
-+        SC_REPORT_FATAL(this->name(), "Storage not configured!");
-+    }
-+    return 0;
-+}
-+
- void DRAMSys::end_of_simulation()
- {
-     if (config.powerAnalysis)
-diff --git a/src/libdramsys/DRAMSys/simulation/DRAMSys.h b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
-index 3202b88..15c4a59 100644
---- a/src/libdramsys/DRAMSys/simulation/DRAMSys.h
-+++ b/src/libdramsys/DRAMSys/simulation/DRAMSys.h
-@@ -71,6 +71,9 @@ public:
++add_library(DRAMSys_Simulator SHARED
++    simulator/dramsys_lib.cpp
++    simulator/elfloader.cpp
++    $<TARGET_OBJECTS:simulator>
+ )
  
-     const Configuration& getConfig() const;
-     const AddressDecoder& getAddressDecoder() const { return *addressDecoder; }
-+    unsigned char * getDramBasePointer();
-+    void preloadByte(uint64_t addr, unsigned char data);
-+    unsigned char checkByte(uint64_t addr);
+-set_target_properties(dramsys_bin PROPERTIES OUTPUT_NAME "DRAMSys")
++target_include_directories(DRAMSys_Simulator
++    PUBLIC
++        ${CMAKE_CURRENT_SOURCE_DIR}
++)
  
-     /**
-      * Returns true if all memory controllers are in idle state.
-diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
-index a2c21dc..55769ed 100644
---- a/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
-+++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.cpp
-@@ -111,6 +111,24 @@ Dram::~Dram()
-         free(memory);
- }
- 
-+unsigned char * Dram::getDramBasePointer()
-+{
-+    return memory;
-+}
-+
-+void Dram::preloadByteInDram(uint64_t addr, unsigned char data)
-+{
-+    unsigned char *phyAddr = memory + addr;
-+    *phyAddr = data;
-+}
-+
-+unsigned char Dram::checkByte(uint64_t addr)
-+{
-+    unsigned char *phyAddr = memory + addr;
-+    unsigned char check_data = *phyAddr;
-+    return check_data;
-+}
-+
- void Dram::reportPower()
- {
- #ifdef DRAMPOWER
-diff --git a/src/libdramsys/DRAMSys/simulation/dram/Dram.h b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
-index d800406..716432f 100644
---- a/src/libdramsys/DRAMSys/simulation/dram/Dram.h
-+++ b/src/libdramsys/DRAMSys/simulation/dram/Dram.h
-@@ -88,6 +88,9 @@ public:
- 
-     tlm_utils::simple_target_socket<Dram> tSocket;
- 
-+    unsigned char * getDramBasePointer();
-+    void preloadByteInDram(uint64_t addr, unsigned char data);
-+    unsigned char checkByte(uint64_t addr);
-     virtual void reportPower();
- 
-     void serialize(std::ostream& stream) const override;
-diff --git a/src/simulator/CMakeLists.txt b/src/simulator/CMakeLists.txt
-index a485bbd..8891e4e 100644
---- a/src/simulator/CMakeLists.txt
-+++ b/src/simulator/CMakeLists.txt
-@@ -1,67 +1,30 @@
--# Copyright (c) 2020, RPTU Kaiserslautern-Landau
--# All rights reserved.
--#
--# Redistribution and use in source and binary forms, with or without
--# modification, are permitted provided that the following conditions are
--# met:
--#
--# 1. Redistributions of source code must retain the above copyright notice,
--#    this list of conditions and the following disclaimer.
--#
--# 2. Redistributions in binary form must reproduce the above copyright
--#    notice, this list of conditions and the following disclaimer in the
--#    documentation and/or other materials provided with the distribution.
--#
--# 3. Neither the name of the copyright holder nor the names of its
--#    contributors may be used to endorse or promote products derived from
--#    this software without specific prior written permission.
--#
--# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
--# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
--# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
--# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
--# OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
--# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
--# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
--# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
--# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
--# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
--# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
--#
--# Authors: 
--#    Matthias Jung
--#    Lukas Steiner
--#    Derek Christ
--#    Thomas Psota
--
- ########################################
- ###      DRAMSys::simulator          ###
- ########################################
- 
- project(DRAMSys_Simulator)
- 
-+# Gather all source and header files
- file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS *.cpp)
- file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS *.h;*.hpp)
- 
-+# Exclude main.cpp from the source files list
- list(FILTER SOURCE_FILES EXCLUDE REGEX "main.cpp")
- 
--add_library(${PROJECT_NAME} STATIC ${SOURCE_FILES} ${HEADER_FILES})
-+# Create a shared library instead of a static library
-+add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES} ${HEADER_FILES})
- 
-+# Specify include directories
- target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
- 
-+# Link libraries
- target_link_libraries(${PROJECT_NAME}
-     PUBLIC
-         Threads::Threads
-         DRAMSys::libdramsys
-+    PRIVATE
+-target_link_libraries(dramsys_bin
++target_link_libraries(DRAMSys_Simulator
++    PUBLIC
++        DRAMSys::DRAMSys
+     PRIVATE
+-        DRAMSys::simulator
++        Threads::Threads
 +        stdc++fs
  )
-
--add_executable(DRAMSys
--    main.cpp
--)
--
--target_link_libraries(DRAMSys
--    PRIVATE
--        DRAMSys_Simulator
--)
--
-+# Source group for better organization in IDEs
- build_source_group()
-diff --git a/src/simulator/simulator/MemoryManager.cpp b/src/simulator/simulator/MemoryManager.cpp
-index 44d6502..8283798 100644
---- a/src/simulator/simulator/MemoryManager.cpp
-+++ b/src/simulator/simulator/MemoryManager.cpp
-@@ -53,6 +53,8 @@ MemoryManager::~MemoryManager()
-             tlm_generic_payload* payload = innerBuffer.second.top();
-             if (storageEnabled)
-                 delete[] payload->get_data_ptr();
-+            if (payload->get_byte_enable_ptr())
-+                delete[] payload->get_byte_enable_ptr();
-             payload->reset();
-             delete payload;
-             innerBuffer.second.pop();
-@@ -92,5 +94,9 @@ tlm_generic_payload& MemoryManager::allocate(unsigned dataLength)
- void MemoryManager::free(tlm_generic_payload* payload)
- {
-     unsigned dataLength = payload->get_data_length();
-+    if (payload->get_byte_enable_ptr()){
-+        delete[] payload->get_byte_enable_ptr();
-+        payload->set_byte_enable_ptr(nullptr);
-+    }
-     freePayloads[dataLength].push(payload);
- }
-diff --git a/src/simulator/simulator/Simulator.h b/src/simulator/simulator/Simulator.h
-index 35f2ddf..3cff9dd 100644
---- a/src/simulator/simulator/Simulator.h
-+++ b/src/simulator/simulator/Simulator.h
-@@ -37,6 +37,7 @@
  
- #include "Initiator.h"
- #include "MemoryManager.h"
+-if(DRAMSYS_BUILD_TESTS)
+-    add_subdirectory(tests)
+-endif()
+-
+-install(TARGETS dramsys_bin)
++target_compile_definitions(DRAMSys_Simulator
++    PUBLIC
++        DRAMSYS_RESOURCE_DIR="${DRAMSYS_RESOURCE_DIR}"
++)
+diff --git a/apps/simulator/simulator/Simulator.h b/apps/simulator/simulator/Simulator.h
+index 5a4799a..1c635d9 100644
+--- a/apps/simulator/simulator/Simulator.h
++++ b/apps/simulator/simulator/Simulator.h
+@@ -40,6 +40,7 @@
+ #include <DRAMSys/common/MemoryManager.h>
+ #include <DRAMSys/configuration/json/DRAMSysConfiguration.h>
+ #include <DRAMSys/DRAMSys.h>
 +#include "dramsys_conv.h"
  
- #include <DRAMSys/config/DRAMSysConfiguration.h>
- #include <DRAMSys/simulation/DRAMSysRecordable.h>
-diff --git a/src/simulator/simulator/dramsys_conv.h b/src/simulator/simulator/dramsys_conv.h
+ class Simulator
+ {
+diff --git a/apps/simulator/simulator/dramsys_conv.h b/apps/simulator/simulator/dramsys_conv.h
 new file mode 100644
-index 0000000..925b420
+index 0000000..dcae6a4
 --- /dev/null
-+++ b/src/simulator/simulator/dramsys_conv.h
++++ b/apps/simulator/simulator/dramsys_conv.h
 @@ -0,0 +1,376 @@
 +#pragma once
 +
-+#include "simulator/MemoryManager.h"
++#include <DRAMSys/common/MemoryManager.h>
 +
 +#include <systemc>
 +#include <iostream>
@@ -293,7 +149,7 @@ index 0000000..925b420
 +    //tlm utilities
 +    tlm_utils::simple_initiator_socket<dramsys_conv>  iSocket;
 +    tlm_utils::peq_with_cb_and_phase<dramsys_conv>    payloadEventQueue;
-+    MemoryManager                                     memoryManager;
++    DRAMSys::MemoryManager                            memoryManager;
 +
 +    //callback function of iSocket
 +    tlm_sync_enum nb_transport_bw(tlm_generic_payload &payload, tlm_phase &phase, sc_time &bwDelay){
@@ -468,7 +324,7 @@ index 0000000..925b420
 +    void dram_send_req(uint64_t addr, uint64_t length , uint64_t is_write, uint64_t strob_enable, uint8_t * buf, uint8_t * strb_buf)
 +    {
 +        req_t req;
-+        tlm_generic_payload& payload = memoryManager.allocate(length);
++        tlm_generic_payload& payload = *memoryManager.allocate(length);
 +
 +        req.addr = addr;
 +        req.len  = length;
@@ -611,15 +467,16 @@ index 0000000..925b420
 +    }
 +
 +};
-diff --git a/src/simulator/simulator/dramsys_lib.cpp b/src/simulator/simulator/dramsys_lib.cpp
+diff --git a/apps/simulator/simulator/dramsys_lib.cpp b/apps/simulator/simulator/dramsys_lib.cpp
 new file mode 100644
-index 0000000..6810a40
+index 0000000..e845ed0
 --- /dev/null
-+++ b/src/simulator/simulator/dramsys_lib.cpp
-@@ -0,0 +1,302 @@
++++ b/apps/simulator/simulator/dramsys_lib.cpp
+@@ -0,0 +1,299 @@
 +#include "Simulator.h"
 +
-+#include <DRAMSys/config/DRAMSysConfiguration.h>
++#include <DRAMSys/configuration/json/DRAMSysConfiguration.h>
++#include <DRAMSys/configuration/memspec/MemSpec.h>
 +#include <filesystem>
 +#include "elfloader.h"
 +
@@ -650,7 +507,7 @@ index 0000000..6810a40
 +    }
 +
 +    DRAMSys::Config::Configuration configuration =
-+        DRAMSys::Config::from_path(baseConfig.c_str(), resourceDirectory.c_str());
++        DRAMSys::Config::from_path(baseConfig.c_str());
 +
 +    DRAMSys::DRAMSys * dramSys;
 +    dramsys_conv * conv;
@@ -661,14 +518,9 @@ index 0000000..6810a40
 +    dramsys_name = dramsys_name + id_str;
 +    conv_name = conv_name + id_str;
 +
-+    if (configuration.simconfig.DatabaseRecording.value_or(false))
-+    {
-+        dramSys = new DRAMSys::DRAMSysRecordable(dramsys_name.c_str(), configuration);
-+    }
-+    else
-+    {
-+        dramSys = new DRAMSys::DRAMSys(dramsys_name.c_str(), configuration);
-+    }
++    // DRAMSysRecordable was merged into DRAMSys::DRAMSys; recording is now
++    // controlled internally via the configuration (DatabaseRecording).
++    dramSys = new DRAMSys::DRAMSys(dramsys_name.c_str(), configuration);
 +
 +    conv = new dramsys_conv(conv_name.c_str());
 +
@@ -681,10 +533,9 @@ index 0000000..6810a40
 +        sc_set_stop_mode(SC_STOP_FINISH_DELTA);
 +    }
 +
-+    DRAMSys::Configuration config;
-+    config.loadMemSpec(configuration.memspec);
-+    uint64_t dramChannelSize = config.memSpec->getSimMemSizeInBytes() / config.memSpec->numberOfChannels;
-+    uint64_t dramMaxBurstByte = config.memSpec->maxBytesPerBurst;
++    const auto& memSpec = dramSys->getMemSpec();
++    uint64_t dramChannelSize = memSpec.getSimMemSizeInBytes() / memSpec.numberOfChannels;
++    uint64_t dramMaxBurstByte = memSpec.maxBytesPerBurst;
 +
 +    //put them into vector container
 +    list_of_DRAMsys.push_back(dramSys);
@@ -803,9 +654,11 @@ index 0000000..6810a40
 +
 +
 +extern "C" void close_dram(int dram_id) {
++    // Deleting these sc_modules right after sc_stop() races the SystemC
++    // kernel's own teardown (pending threads/events still reference them),
++    // which corrupts the heap. The process exits right after this DPI call
++    // returns (called from the Verilog `final` block), so just leak them.
 +    if(dram_id == 0) sc_stop();
-+    delete list_of_conv[dram_id];
-+    delete list_of_DRAMsys[dram_id];
 +}
 +
 +
@@ -919,11 +772,11 @@ index 0000000..6810a40
 +    list_of_conv[dram_id]->registerCBRespMeth(resp_meth);
 +    list_of_conv[dram_id]->registerCBUpdateReqMeth(req_meth);
 +}
-diff --git a/src/simulator/simulator/elfloader.cpp b/src/simulator/simulator/elfloader.cpp
+diff --git a/apps/simulator/simulator/elfloader.cpp b/apps/simulator/simulator/elfloader.cpp
 new file mode 100644
 index 0000000..e95266c
 --- /dev/null
-+++ b/src/simulator/simulator/elfloader.cpp
++++ b/apps/simulator/simulator/elfloader.cpp
 @@ -0,0 +1,137 @@
 +#include "elfloader.h"
 +
@@ -1062,11 +915,11 @@ index 0000000..e95266c
 +
 +  munmap(buf, size);
 +}
-diff --git a/src/simulator/simulator/elfloader.h b/src/simulator/simulator/elfloader.h
+diff --git a/apps/simulator/simulator/elfloader.h b/apps/simulator/simulator/elfloader.h
 new file mode 100644
 index 0000000..50eb7e8
 --- /dev/null
-+++ b/src/simulator/simulator/elfloader.h
++++ b/apps/simulator/simulator/elfloader.h
 @@ -0,0 +1,225 @@
 +#ifndef _ELFLOADER_H
 +#define _ELFLOADER_H
@@ -1293,3 +1146,144 @@ index 0000000..50eb7e8
 +                        std::vector<unsigned char*>& dest_buffer);
 +
 +#endif
+diff --git a/configs/simconfig/example.json b/configs/simconfig/example.json
+index 3459a49..70191d3 100644
+--- a/configs/simconfig/example.json
++++ b/configs/simconfig/example.json
+@@ -7,7 +7,7 @@
+         "PowerAnalysis": false,
+         "SimulationName": "example",
+         "SimulationProgressBar": true,
+-        "StoreMode": "NoStorage",
++        "StoreMode": "Store",
+         "UseMalloc": false,
+         "WindowSize": 1000,
+         "TogglingRate": {
+diff --git a/src/DRAMSys/DRAMSys.cpp b/src/DRAMSys/DRAMSys.cpp
+index 3d29a3a..8365979 100644
+--- a/src/DRAMSys/DRAMSys.cpp
++++ b/src/DRAMSys/DRAMSys.cpp
+@@ -245,6 +245,41 @@ void DRAMSys::registerIdleCallback(const std::function<void()>& idleCallback)
+     }
+ }
+ 
++unsigned char* DRAMSys::getDramBasePointer()
++{
++    unsigned char* ptr = nullptr;
++    for (auto& dram : drams)
++        ptr = dram->getDramBasePointer();
++    return ptr;
++}
++
++void DRAMSys::preloadByte(uint64_t addr, unsigned char data)
++{
++    if (getSimConfig().storeMode == Config::StoreModeType::Store)
++    {
++        for (auto& dram : drams)
++            dram->preloadByteInDram(addr, data);
++    }
++    else
++    {
++        SC_REPORT_FATAL(this->name(), "Storage not configured!");
++    }
++}
++
++unsigned char DRAMSys::checkByte(uint64_t addr)
++{
++    if (getSimConfig().storeMode == Config::StoreModeType::Store)
++    {
++        for (auto& dram : drams)
++            return dram->checkByte(addr);
++    }
++    else
++    {
++        SC_REPORT_FATAL(this->name(), "Storage not configured!");
++    }
++    return 0;
++}
++
+ void DRAMSys::end_of_simulation()
+ {
+     if (simConfig->powerAnalysis)
+diff --git a/src/DRAMSys/DRAMSys.h b/src/DRAMSys/DRAMSys.h
+index d9ebe7c..dd1e533 100644
+--- a/src/DRAMSys/DRAMSys.h
++++ b/src/DRAMSys/DRAMSys.h
+@@ -82,6 +82,9 @@ public:
+     const auto& getMcConfig() const { return *mcConfig; }
+     const auto& getMemSpec() const { return *memSpec; }
+     const auto& getAddressDecoder() const { return *addressDecoder; }
++    unsigned char* getDramBasePointer();
++    void preloadByte(uint64_t addr, unsigned char data);
++    unsigned char checkByte(uint64_t addr);
+ 
+     /**
+      * Returns true if all memory controllers are in idle state.
+diff --git a/src/DRAMSys/common/MemoryManager.cpp b/src/DRAMSys/common/MemoryManager.cpp
+index bb93407..0352632 100644
+--- a/src/DRAMSys/common/MemoryManager.cpp
++++ b/src/DRAMSys/common/MemoryManager.cpp
+@@ -60,6 +60,9 @@ MemoryManager::~MemoryManager()
+                 }
+             }
+ 
++            if (payload->get_byte_enable_ptr())
++                delete[] payload->get_byte_enable_ptr();
++
+             payload->reset();
+             delete payload;
+ 
+@@ -95,6 +98,11 @@ tlm::tlm_generic_payload* MemoryManager::allocate(std::size_t dataLength)
+ void MemoryManager::free(tlm::tlm_generic_payload* trans)
+ {
+     unsigned dataLength = trans->get_data_length();
++    if (trans->get_byte_enable_ptr())
++    {
++        delete[] trans->get_byte_enable_ptr();
++        trans->set_byte_enable_ptr(nullptr);
++    }
+     freePayloads[dataLength].push(trans);
+ }
+ 
+diff --git a/src/DRAMSys/simulation/Dram.cpp b/src/DRAMSys/simulation/Dram.cpp
+index 9d23240..8924030 100644
+--- a/src/DRAMSys/simulation/Dram.cpp
++++ b/src/DRAMSys/simulation/Dram.cpp
+@@ -131,6 +131,23 @@ Dram::~Dram()
+         free(memory);
+ }
+ 
++unsigned char* Dram::getDramBasePointer()
++{
++    return memory;
++}
++
++void Dram::preloadByteInDram(uint64_t addr, unsigned char data)
++{
++    unsigned char* phyAddr = memory + addr;
++    *phyAddr = data;
++}
++
++unsigned char Dram::checkByte(uint64_t addr)
++{
++    unsigned char* phyAddr = memory + addr;
++    return *phyAddr;
++}
++
+ void Dram::reportPower()
+ {
+ #ifdef USE_DRAMPOWER
+diff --git a/src/DRAMSys/simulation/Dram.h b/src/DRAMSys/simulation/Dram.h
+index 4ae89e5..2a66ac5 100644
+--- a/src/DRAMSys/simulation/Dram.h
++++ b/src/DRAMSys/simulation/Dram.h
+@@ -117,6 +117,9 @@ public:
+ 
+     tlm_utils::simple_target_socket<Dram> tSocket{"tSocket"};
+ 
++    unsigned char* getDramBasePointer();
++    void preloadByteInDram(uint64_t addr, unsigned char data);
++    unsigned char checkByte(uint64_t addr);
+     void reportPower();
+ 
+     void serialize(std::ostream& stream) const override;

@@ -16,11 +16,11 @@ jobs:
         cd dramsys_lib
         git clone https://github.com/tukl-msd/DRAMSys.git
         cd DRAMSys
-        git reset --hard 8e021ea
+        git reset --hard 1ddfb09ae69dd43306b3da59545a747bced8725c
         git apply ../dramsys_lib_patch
     - name: Build DRAMSys
       run: |
         mkdir -p dramsys_lib/DRAMSys/build
         cd dramsys_lib/DRAMSys/build
-        cmake -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_WITH_DRAMPOWER=ON ..
+        cmake -DCMAKE_CXX_FLAGS=-fPIC -DCMAKE_C_FLAGS=-fPIC -D DRAMSYS_USE_DRAMPOWER=ON ..
         make -j
