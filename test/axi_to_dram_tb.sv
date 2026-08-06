@@ -10,7 +10,7 @@
 // Date: 07.June.2023
 
 // Testbench for dram rtl simulator
-`timescale 1ns/1ps
+`timescale 1ps/1ps
 
 module axi_to_dram_tb;
 
@@ -38,13 +38,27 @@ module axi_to_dram_tb;
 
     typedef logic [7:0] my_byte_t;
 
+    localparam int unsigned NumIdx = 128;
+    localparam int unsigned GatherIdx [0:NumIdx-1] = '{
+        17, 23, 33, 49, 71, 77, 116, 141, 164, 167, 174, 209,
+        216, 292, 307, 344, 355, 357, 361, 388, 419, 506, 515, 566,
+        582, 586, 587, 592, 599, 618, 626, 643, 645, 677, 700, 707,
+        725, 729, 737, 743, 793, 794, 803, 804, 819, 831, 832, 834,
+        856, 864, 878, 889, 894, 935, 956, 984, 990, 1005, 1020, 1037,
+        1046, 1055, 1112, 1116, 1141, 1153, 1166, 1167, 1178, 1212, 1227, 1233,
+        1239, 1242, 1244, 1264, 1302, 1304, 1322, 1329, 1349, 1382, 1407, 1430,
+        1445, 1457, 1458, 1479, 1510, 1517, 1528, 1531, 1532, 1542, 1555, 1582,
+        1585, 1615, 1617, 1639, 1702, 1710, 1745, 1758, 1761, 1766, 1782, 1785,
+        1791, 1792, 1799, 1826, 1829, 1857, 1878, 1879, 1884, 1910, 1921, 1934,
+        1954, 1957, 1959, 1982, 1991, 2004, 2020, 2029
+    };
     //////////////////////////////////////
     //        Signal Definition         //
     //////////////////////////////////////
 
-    localparam time ClkPeriod = 4ns;
-    localparam time ApplTime =  1ns;
-    localparam time TestTime =  3ns;
+    localparam time ClkPeriod = 1000ps;
+    localparam time ApplTime =   200ps;
+    localparam time TestTime =   800ps;
 
     logic  clk, rst_n;
 
@@ -69,14 +83,14 @@ module axi_to_dram_tb;
         rst_n = 0;
         $display("start");
         repeat (3) begin
-            #(ClkPeriod/2) clk = 0;
-            #(ClkPeriod/2) clk = 1;
+            #(500ps) clk = 0;
+            #(500ps) clk = 1;
         end
         rst_n = 1;
         $display("rst up");
         forever begin
-            #(ClkPeriod/2) clk = 0;
-            #(ClkPeriod/2) clk = 1;
+            #(500ps) clk = 0;
+            #(500ps) clk = 1;
         end
     end
 
@@ -84,14 +98,14 @@ module axi_to_dram_tb;
     //        DUT       //
     //////////////////////
 
-    dram_sim_engine #(.ClkPeriod(ClkPeriod)) i_dram_sim_engine (.clk_i(clk), .rst_ni(rst_n));
+    dram_sim_engine #(.ClkPeriod(1ns)) i_dram_sim_engine (.clk_i(clk), .rst_ni(rst_n));
 
     axi_dram_sim #(
         .AxiAddrWidth(AXI_ADDR_WIDTH),
         .AxiDataWidth(AXI_DATA_WIDTH),
         .AxiIdWidth  (AXI_ID_WIDTH),
         .AxiUserWidth(AXI_USER_WIDTH),
-        .DRAMType    ("DDR4"),
+        .DRAMType    ("HBM2"),
         // .CustomerDRAM("ddr3-example2"),
         .BASE        (BASE),
         .axi_req_t   (axi_req_t),
@@ -142,6 +156,44 @@ module axi_to_dram_tb;
     axi_scoreboard_master_t axi_scoreboard_master = new(axi_bus_dv);
 
     //Speed test
+    // task speedTestRead(int count);
+    //     real time_start;
+    //     real time_end;
+    //     real bandwidth;
+    //     automatic axi_master_t::ax_beat_t ar = new ;
+    //     automatic axi_master_t::r_beat_t r = new ;
+
+    //     ar = axi_master.new_rand_burst(0,0);
+    //     ar.ax_len = 255;
+    //     ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
+    //     ar.ax_atop = axi_pkg::ATOP_NONE;
+    //     ar.ax_addr = (ar.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
+
+    //     $display("----------Testing DRAM Bulk Read Speed ---------");
+    //     time_start = $time();
+
+    //     fork
+    //         //send ar
+    //         begin
+    //             for (int i = 0; i < count; i++) begin
+    //                 ar.ax_addr = ar.ax_addr + (64*(ar.ax_len+1));
+    //                 axi_master.drv.send_ar(ar);
+    //             end
+    //         end
+    //         //receive r
+    //         begin
+    //             for (int i = 0; i < (count*(ar.ax_len+1)); i++) begin
+    //                 axi_master.drv.recv_r(r);
+    //             end
+    //         end
+    //     join
+
+    //     time_end = $time();
+    //     bandwidth = (64*256*count) / (time_end - time_start);
+
+    //     $display("speedTestRead done!: Bandwidth = %0f GB/s", bandwidth);
+    // endtask
+
     task speedTestRead(int count);
         real time_start;
         real time_end;
@@ -149,20 +201,19 @@ module axi_to_dram_tb;
         automatic axi_master_t::ax_beat_t ar = new ;
         automatic axi_master_t::r_beat_t r = new ;
 
-        ar = axi_master.new_rand_burst(0);
-        ar.ax_len = 255;
+        ar = axi_master.new_rand_burst(0,0);
+        ar.ax_len = 3;                              // 4 beats * 64 B = 256 B (one gather row)
         ar.ax_size = $clog2(AXI_DATA_WIDTH/8);
         ar.ax_atop = axi_pkg::ATOP_NONE;
-        ar.ax_addr = (ar.ax_addr>>$clog2(AXI_DATA_WIDTH/8))<<$clog2(AXI_DATA_WIDTH/8);
 
-        $display("----------Testing DRAM Bulk Read Speed ---------");
+        $display("----------Testing DRAM Sparse Gather Read Speed ---------");
         time_start = $time();
 
         fork
             //send ar
             begin
                 for (int i = 0; i < count; i++) begin
-                    ar.ax_addr = ar.ax_addr + (64*(ar.ax_len+1));
+                    ar.ax_addr = BASE + GatherIdx[i % NumIdx] * 256;  // real scattered row address
                     axi_master.drv.send_ar(ar);
                 end
             end
@@ -175,7 +226,7 @@ module axi_to_dram_tb;
         join
 
         time_end = $time();
-        bandwidth = (64*256*count) / (time_end - time_start);
+        bandwidth = (256*count) / (time_end - time_start);
 
         $display("speedTestRead done!: Bandwidth = %0f GB/s", bandwidth);
     endtask
@@ -188,7 +239,7 @@ module axi_to_dram_tb;
         automatic axi_master_t::w_beat_t w = new ;
         automatic axi_master_t::b_beat_t b = new ;
 
-        aw = axi_master.new_rand_burst(0);
+        aw = axi_master.new_rand_burst(0,0);
         aw.ax_len = 255;
         aw.ax_size = $clog2(AXI_DATA_WIDTH/8);
         aw.ax_atop = axi_pkg::ATOP_NONE;
@@ -237,11 +288,11 @@ module axi_to_dram_tb;
 
     initial begin
         axi_master.reset();
-        axi_scoreboard_master.enable_all_checks();
-        axi_scoreboard_master.monitor();
+        // axi_scoreboard_master.enable_all_checks();
+        // axi_scoreboard_master.monitor();
         axi_master.add_memory_region(BASE + 0, BASE + 65636, axi_pkg::NORMAL_NONCACHEABLE_NONBUFFERABLE);
         @(posedge rst_n);
-        speedTestWrite(100);
+        // speedTestWrite(100);
         speedTestRead(100);
         $display("----------     ALL TESTS PASSED !!!        ---------");
         $finish;

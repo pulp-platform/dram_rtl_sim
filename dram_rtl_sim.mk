@@ -5,7 +5,7 @@
 # Nils Wistoff <nwistoff@iis.ee.ethz.ch>
 
 BENDER ?= bender
-CMAKE ?= cmake
+CMAKE ?= cmake-3.28.3
 DRAM_RTL_SIM_ROOT ?= $(shell $(BENDER) path axi_dram_sim)
 DRAMSYS_ROOT ?= $(DRAM_RTL_SIM_ROOT)/dramsys_lib/DRAMSys
 DRAMSYS_BUILD_DIR ?= $(DRAMSYS_ROOT)/build
