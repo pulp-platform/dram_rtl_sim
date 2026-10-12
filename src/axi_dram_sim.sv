@@ -25,6 +25,9 @@ module axi_dram_sim #(
     //DRAM type
     parameter              DRAMType         = "DDR4",
     parameter              CustomerDRAM     = "none",
+    // 1: AXI bursts supported through axi_to_axi_lite, which serves at most
+    // one read every two cycles. 0: single-beat traffic only, at full bandwidth.
+    parameter bit          BurstEn          = 1'b1,
     // AXI interface
     parameter type         axi_req_t        = logic,
     parameter type         axi_resp_t       = logic,
@@ -48,6 +51,8 @@ module axi_dram_sim #(
     localparam int unsigned DramDataWidth   = 512;
     localparam int unsigned DramIdWidth     = AxiIdWidth;
     localparam int unsigned DramUserWidth   = AxiUserWidth;
+    // Outstanding reads and writes each; sizes the ID and user reflection FIFOs
+    localparam int unsigned MaxTxns         = BurstEn ? 64 : 128;
     typedef logic [DramAddrWidth-1:0]       addr_t;
     typedef logic [DramDataWidth-1:0]       data_t;
     typedef logic [DramDataWidth/8-1:0]     strb_t;
@@ -92,7 +97,7 @@ module axi_dram_sim #(
     fifo_v3 #(
         .FALL_THROUGH (1'b0         ),
         .DATA_WIDTH   ($bits(user_t)),
-        .DEPTH        (64           )
+        .DEPTH        (MaxTxns      )
     ) i_ar_user_fifo (
         .clk_i      (clk_i  ),
         .rst_ni     (rst_ni ),
@@ -110,7 +115,7 @@ module axi_dram_sim #(
     fifo_v3 #(
         .FALL_THROUGH (1'b0         ),
         .DATA_WIDTH   ($bits(user_t)),
-        .DEPTH        (64           )
+        .DEPTH        (MaxTxns      )
     ) i_aw_user_fifo (
         .clk_i      (clk_i  ),
         .rst_ni     (rst_ni ),
@@ -137,27 +142,47 @@ module axi_dram_sim #(
     dram_axi_lite_resp_t dram_axi_lite_resp;
 
 
-    axi_to_axi_lite #(
-        .AxiAddrWidth   (AxiAddrWidth),
-        .AxiDataWidth   (DramDataWidth),
-        .AxiIdWidth     (AxiIdWidth),
-        .AxiUserWidth   (AxiUserWidth),
-        .AxiMaxWriteTxns(64),
-        .AxiMaxReadTxns (64),
-        .FallThrough    (0),
-        .full_req_t     (dram_axi_req_t),
-        .full_resp_t    (dram_axi_resp_t),
-        .lite_req_t     (dram_axi_lite_req_t),
-        .lite_resp_t    (dram_axi_lite_resp_t)
-        ) i_axi_to_axi_lite (
-        .clk_i,
-        .rst_ni,
-        .test_i    ('0        ),
-        .slv_req_i (dram_axi_req ),
-        .slv_resp_o(dram_axi_resp),
-        .mst_req_o (dram_axi_lite_req ),
-        .mst_resp_i(dram_axi_lite_resp )
-    );
+    if (BurstEn) begin : gen_burst_to_lite
+        axi_to_axi_lite #(
+            .AxiAddrWidth   (AxiAddrWidth),
+            .AxiDataWidth   (DramDataWidth),
+            .AxiIdWidth     (AxiIdWidth),
+            .AxiUserWidth   (AxiUserWidth),
+            .AxiMaxWriteTxns(MaxTxns),
+            .AxiMaxReadTxns (MaxTxns),
+            .FallThrough    (0),
+            .full_req_t     (dram_axi_req_t),
+            .full_resp_t    (dram_axi_resp_t),
+            .lite_req_t     (dram_axi_lite_req_t),
+            .lite_resp_t    (dram_axi_lite_resp_t)
+            ) i_axi_to_axi_lite (
+            .clk_i,
+            .rst_ni,
+            .test_i    ('0        ),
+            .slv_req_i (dram_axi_req ),
+            .slv_resp_o(dram_axi_resp),
+            .mst_req_o (dram_axi_lite_req ),
+            .mst_resp_i(dram_axi_lite_resp )
+        );
+    end else begin : gen_single_beat_to_lite
+        // The burst splitter in axi_to_axi_lite accepts an AR or an R beat per
+        // cycle, but not both; single-beat traffic needs no splitting.
+        axi_single_beat_to_lite #(
+            .AxiIdWidth (AxiIdWidth          ),
+            .MaxTxns    (MaxTxns             ),
+            .full_req_t (dram_axi_req_t      ),
+            .full_resp_t(dram_axi_resp_t     ),
+            .lite_req_t (dram_axi_lite_req_t ),
+            .lite_resp_t(dram_axi_lite_resp_t)
+        ) i_axi_single_beat_to_lite (
+            .clk_i,
+            .rst_ni,
+            .slv_req_i (dram_axi_req      ),
+            .slv_resp_o(dram_axi_resp     ),
+            .mst_req_o (dram_axi_lite_req ),
+            .mst_resp_i(dram_axi_lite_resp)
+        );
+    end
 
 
     //============================//
